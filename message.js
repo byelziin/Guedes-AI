@@ -1,11 +1,14 @@
 const message = {
 
 text:
-`Bom dia!
+`Boa tarde, tudo bem?
 
-Aqui é Cristiano Felix da mesa de operações da BFR/XP escritório parceiro do Fluxo Real.
+Me chamo Gabriel, falo da BFR Investimentos, escritório do André Morais, parceiro da XP.
 
-Tantei ligar no seu número, mas só chamou. Estou entrando em contato para saber se está tudo certo com suas operações em minicontratos e com o nosso atendimento? Ou se precisa de alguma ajuda?`,
+Notei que você acessou um dos nossos canais recentemente e quis entender melhor seu momento:
+você está investindo, operando ou ainda estudando sobre o assunto?
+
+Se fizer sentido, posso te ajudar com algumas informações ou direcionamentos 👍`,
 
 };
 

@@ -1,5 +1,6 @@
-2026/04/16-11:11:15.288 c3c Reusing MANIFEST C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
-2026/04/16-11:11:15.301 c3c Recovering log #3
-2026/04/16-11:11:15.302 c3c Level-0 table #3: started
-2026/04/16-11:11:15.307 c3c Level-0 table #3: 21198 bytes OK
-2026/04/16-11:11:15.312 c3c Delete type=0 #3
+2026/04/16-16:15:01.066 e70 Reusing MANIFEST C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/04/16-16:15:01.079 e70 Recovering log #4
+2026/04/16-16:15:01.084 e70 Reusing old log C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Local Storage\leveldb/000004.log 
+2026/04/16-16:19:02.469 634 Level-0 table #8: started
+2026/04/16-16:19:02.484 634 Level-0 table #8: 20414 bytes OK
+2026/04/16-16:19:02.489 634 Delete type=0 #4
