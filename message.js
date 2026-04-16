@@ -1,11 +1,10 @@
 const message = {
 
 text:
-`Olá! Tudo bem? 😄
+`Boa tarde!
+Aqui é Cristiano Felix da mesa de operações da BFR/XP escritório parceiro do Fluxo Real.
 
-Passando para te avisar que temos uma nova oportunidade disponível.
-
-Se tiver interesse, me responde aqui 👍`
+Tantei ligar no seu número, mas só chamou. Estou entrando em contato para saber se está tudo certo com suas operações em minicontratos e com o nosso atendimento? Ou se precisa de alguma ajuda?`,
 
 };
 
