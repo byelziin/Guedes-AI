@@ -23,13 +23,43 @@ const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
 // Delay aleatório (ANTI BLOQUEIO)
 const randomDelay = () =>
-    Math.floor(Math.random() * 8000) + 7000; // 7–15s
+    Math.floor(Math.random() * 8000) + 7000;
 
-// 🔥 FUNÇÃO QUE CORRIGE QUALQUER NÚMERO
+// ===============================
+// 🔥 FIX LID (ADICIONADO)
+// ===============================
+async function safeSend(chatId, text) {
+    try {
+        return await client.sendMessage(chatId, text);
+
+    } catch (err) {
+
+        if (err.message.includes('No LID for user')) {
+
+            try {
+                const numberId = await client.getNumberId(chatId);
+
+                if (!numberId) return false;
+
+                await delay(2000);
+
+                return await client.sendMessage(numberId._serialized, text);
+
+            } catch (e) {
+                return false;
+            }
+        }
+
+        return false;
+    }
+}
+
+// ===============================
+// 🔥 FORMATA NÚMERO
+// ===============================
 function formatNumber(number) {
     let num = number.replace(/\D/g, '');
 
-    // adiciona 55 se não tiver
     if (!num.startsWith('55')) {
         num = '55' + num;
     }
@@ -37,12 +67,10 @@ function formatNumber(number) {
     let country = '55';
     let rest = num.slice(2);
 
-    // valida tamanho
     if (rest.length < 10 || rest.length > 11) {
         return null;
     }
 
-    // adiciona o 9 se for número antigo (10 dígitos)
     if (rest.length === 10) {
         rest = rest.slice(0, 2) + '9' + rest.slice(2);
     }
@@ -87,7 +115,6 @@ client.on('ready', async () => {
 
             console.log(`📤 Enviando para ${cleanNumber}`);
 
-            // verifica se existe no WhatsApp
             const isRegistered = await client.isRegisteredUser(chatId);
 
             if (!isRegistered) {
@@ -97,7 +124,13 @@ client.on('ready', async () => {
 
             await delay(3000);
 
-            await client.sendMessage(chatId, message.text);
+            // 🔥 ALTERAÇÃO AQUI (antes era sendMessage direto)
+            const ok = await safeSend(chatId, message.text);
+
+            if (!ok) {
+                console.log(`❌ Falhou envio: ${cleanNumber}`);
+                continue;
+            }
 
             enviados++;
 
@@ -106,9 +139,7 @@ client.on('ready', async () => {
             await delay(randomDelay());
 
         } catch (err) {
-
             console.log(`❌ Erro no número ${cleanNumber}: ${err.message}`);
-
         }
     }
 
