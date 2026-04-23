@@ -2,7 +2,7 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 
 const numbers = require('./numbers');
-const message = require('./message');
+const createMessage = require('./message');
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -125,6 +125,7 @@ client.on('ready', async () => {
             await delay(3000);
 
             // 🔥 ALTERAÇÃO AQUI (antes era sendMessage direto)
+            const message = createMessage();
             const ok = await safeSend(chatId, message.text);
 
             if (!ok) {
