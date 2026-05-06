@@ -21,9 +21,20 @@ const client = new Client({
 // Delay fixo
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-// Delay aleatório (ANTI BLOQUEIO)
+// Delay aleatório (ANTI BLOQUEIO) - +8 segundos
 const randomDelay = () =>
-    Math.floor(Math.random() * 8000) + 7000;
+    Math.floor(Math.random() * 8000) + 15000;
+
+// Contador regressivo
+async function delayWithCountdown(ms) {
+    let remaining = Math.ceil(ms / 1000);
+    while (remaining > 0) {
+        process.stdout.write(`\r⏱️  Próximo disparo em ${remaining}s...`);
+        await delay(1000);
+        remaining--;
+    }
+    console.log('\r✅ Disparando agora!                  ');
+}
 
 // ===============================
 // 🔥 FIX LID (ADICIONADO)
@@ -137,7 +148,7 @@ client.on('ready', async () => {
 
             console.log(`✅ Enviado (${enviados}/${numbers.length})`);
 
-            await delay(randomDelay());
+            await delayWithCountdown(randomDelay());
 
         } catch (err) {
             console.log(`❌ Erro no número ${cleanNumber}: ${err.message}`);
