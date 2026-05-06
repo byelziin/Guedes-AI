@@ -10,8 +10,32 @@ function getGreeting() {
     }
 }
 
-function createMessage() {
+function createMessage(type = 1) {
     const saudacao = getGreeting();
+
+    if (type === 2) {
+        return {
+            text: `${saudacao}, tudo bem?
+
+Aqui é Gabriel da BFR Investimentos, escritório do André Morais, parceiro da XP.
+
+Eu vi que você passou por um de nossos canais e queria entender seu momento: você já está investindo, operando ou ainda está estudando sobre o mercado?
+
+Se quiser, posso te enviar algumas informações úteis e um direcionamento inicial 👍`
+        };
+    }
+
+    if (type === 3) {
+        return {
+            text: `${saudacao}, tudo bem?
+
+Sou Gabriel, da BFR Investimentos, parceiro do André Morais na XP.
+
+Notei sua interação recente com nossos conteúdos e queria saber: você está focado em investimentos, trading ou ainda busca aprender mais antes de começar?
+
+Se fizer sentido, posso te ajudar com algumas sugestões e caminhos para o seu perfil 👍`
+        };
+    }
 
     return {
         text: `${saudacao}, tudo bem?

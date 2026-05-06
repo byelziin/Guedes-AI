@@ -1,3 +1,2 @@
-2026/04/17-10:53:31.223 402c Reusing MANIFEST C:\Users\bgame\Documents\Byel\ProjetoFuturo-WP\Bot-Cris\.wwebjs_auth\session\Default\Sync Data\LevelDB/MANIFEST-000001
-2026/04/17-10:53:31.238 402c Recovering log #3
-2026/04/17-10:53:31.240 402c Reusing old log C:\Users\bgame\Documents\Byel\ProjetoFuturo-WP\Bot-Cris\.wwebjs_auth\session\Default\Sync Data\LevelDB/000003.log 
+2026/05/06-10:09:28.187 2320 Creating DB C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Sync Data\LevelDB since it was missing.
+2026/05/06-10:09:28.200 2320 Reusing MANIFEST C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Sync Data\LevelDB/MANIFEST-000001

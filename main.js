@@ -25,6 +25,12 @@ const delay = (ms) => new Promise(res => setTimeout(res, ms));
 const randomDelay = () =>
     Math.floor(Math.random() * 8000) + 15000;
 
+function getMessageStyle(sentCount) {
+    if (sentCount % 12 === 6) return 2;
+    if (sentCount % 12 === 0) return 3;
+    return 1;
+}
+
 // Contador regressivo
 async function delayWithCountdown(ms) {
     let remaining = Math.ceil(ms / 1000);
@@ -124,7 +130,8 @@ client.on('ready', async () => {
 
         try {
 
-            console.log(`📤 Enviando para ${cleanNumber}`);
+            const style = getMessageStyle(enviados + 1);
+            console.log(`📤 Enviando para ${cleanNumber} (estilo ${style})`);
 
             const isRegistered = await client.isRegisteredUser(chatId);
 
@@ -136,7 +143,7 @@ client.on('ready', async () => {
             await delay(3000);
 
             // 🔥 ALTERAÇÃO AQUI (antes era sendMessage direto)
-            const message = createMessage();
+            const message = createMessage(style);
             const ok = await safeSend(chatId, message.text);
 
             if (!ok) {
