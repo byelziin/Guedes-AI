@@ -28,8 +28,8 @@ Se quiser, posso te enviar algumas informações úteis e um direcionamento inic
     if (type === 3) {
         return {
             text: `${saudacao}, tudo bem?
-
 Sou Gabriel, da BFR Investimentos, parceiro do André Morais na XP.
+
 
 Notei sua interação recente com nossos conteúdos e queria saber: você está focado em investimentos, trading ou ainda busca aprender mais antes de começar?
 

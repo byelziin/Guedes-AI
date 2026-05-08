@@ -1,2 +1,3 @@
-2026/05/06-10:09:28.327 3448 Creating DB C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Local Storage\leveldb since it was missing.
-2026/05/06-10:09:28.362 3448 Reusing MANIFEST C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/05/07-12:50:30.661 cc Reusing MANIFEST C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/05/07-12:50:30.678 cc Recovering log #3
+2026/05/07-12:50:30.685 cc Reusing old log C:\Users\Gabriel Guedes\Documents\GitHub\Bot-Cris\.wwebjs_auth\session\Default\Local Storage\leveldb/000003.log 
