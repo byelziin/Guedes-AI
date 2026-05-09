@@ -63,12 +63,6 @@ function App() {
     }
   }
 
-  function handleResetSession() {
-    if (window.confirm('ATENÇÃO: Isso irá DELETAR a pasta de sessão. Use apenas se o QR Code não aparecer ou se quiser trocar de conta permanentemente. Confirmar?')) {
-      socketRef.current?.emit('resetSession')
-    }
-  }
-
   function handleStart() {
     socketRef.current?.emit('start', { numbers, message })
   }
@@ -142,10 +136,6 @@ function App() {
 
         <button className="danger" onClick={handleStop} disabled={!botState.isSending}>
           Parar envio
-        </button>
-
-        <button className="secondary" onClick={handleResetSession}>
-          Resetar Sessão (Deletar Pasta)
         </button>
       </div>
 
