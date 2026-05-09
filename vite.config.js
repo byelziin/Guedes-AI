@@ -3,6 +3,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
+  base: '/dist/',
   server: {
     proxy: {
       '/socket.io': {
@@ -18,6 +19,5 @@ export default defineConfig({
     outDir: 'public/dist',
     emptyOutDir: true,
     assetsDir: 'assets',
-    base: '/dist/',
   },
 });
