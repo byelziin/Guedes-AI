@@ -1,5 +1,7 @@
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { Server } = require('socket.io');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
@@ -15,7 +17,7 @@ const port = process.env.PORT || 3000;
 let isSending = false;
 let sentCount = 0;
 let statusMessage = 'Aguardando autenticação...';
-let client;
+let client = null;
 let clientInitializing = false;
 let clientReady = false;
 
@@ -23,60 +25,80 @@ function createClient() {
   const newClient = new Client({
     authStrategy: new LocalAuth({ clientId: 'web-interface' }),
     puppeteer: {
-      headless: false,
+      headless: false, // Voltado para false conforme solicitado
       executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-extensions']
     }
   });
 
   newClient.on('qr', async (qr) => {
-    const url = await qrcode.toDataURL(qr);
-    statusMessage = 'Aguardando escaneamento do QR code...';
-    logToUi('📲 Novo QR code gerado. Escaneie pelo WhatsApp.');
-    io.emit('qr', url);
-    io.emit('status', { status: statusMessage, sentCount, ready: false });
+    try {
+      const url = await qrcode.toDataURL(qr);
+      statusMessage = 'Aguardando escaneamento do QR code...';
+      logToUi('📲 Novo QR code gerado. Escaneie pelo WhatsApp.');
+      io.emit('qr', url);
+      sendUpdate();
+    } catch (err) {
+      logToUi('❌ Erro ao gerar QR code: ' + err.message);
+    }
   });
 
   newClient.on('ready', () => {
     statusMessage = 'Bot conectado e pronto.';
     clientReady = true;
     logToUi('🚀 Bot pronto');
-    io.emit('status', { status: statusMessage, sentCount, ready: true });
+    sendUpdate();
   });
 
   newClient.on('auth_failure', (msg) => {
     statusMessage = 'Falha na autenticação';
     logToUi(`❌ Falha na autenticação: ${msg}`);
-    io.emit('status', { status: statusMessage, sentCount, ready: false });
+    sendUpdate();
   });
 
   newClient.on('disconnected', (reason) => {
     statusMessage = 'Cliente desconectado';
     clientReady = false;
     logToUi(`⚠️ Cliente desconectado: ${reason}`);
-    io.emit('status', { status: statusMessage, sentCount, ready: false });
+    sendUpdate();
   });
 
   return newClient;
 }
 
+function sendUpdate() {
+  io.emit('status', { 
+    status: statusMessage, 
+    sentCount, 
+    ready: clientReady,
+    isSending 
+  });
+}
+
 async function initializeClient() {
   if (clientReady) {
+    logToUi('⚠️ Cliente já está pronto.');
     return;
   }
-
   if (clientInitializing) {
+    logToUi('⏳ Inicialização já em andamento...');
     return;
   }
 
   clientInitializing = true;
   statusMessage = 'Inicializando WhatsApp...';
-  io.emit('status', { status: statusMessage, sentCount, ready: false });
+  sendUpdate();
   logToUi('🔌 Inicializando cliente WhatsApp...');
 
-  client = createClient();
-  await client.initialize();
-  clientInitializing = false;
+  try {
+    client = createClient();
+    await client.initialize();
+  } catch (err) {
+    logToUi(`❌ Erro ao inicializar: ${err.message}`);
+    client = null;
+  } finally {
+    clientInitializing = false;
+  }
 }
 
 function logToUi(message) {
@@ -94,10 +116,7 @@ function formatNumber(number) {
 }
 
 function parseNumbers(raw) {
-  return raw
-    .split(/[\n,;]+/)
-    .map(item => item.trim())
-    .filter(Boolean);
+  return raw.split(/[\n,;]+/).map(item => item.trim()).filter(Boolean);
 }
 
 function normalizeMessage(raw) {
@@ -110,13 +129,8 @@ function getMessageStyle(sentCount) {
   return 1;
 }
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function randomDelay() {
-  return Math.floor(Math.random() * 8000) + 15000;
-}
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const randomDelay = () => Math.floor(Math.random() * 8000) + 15000;
 
 async function safeSend(chatId, text) {
   try {
@@ -128,139 +142,133 @@ async function safeSend(chatId, text) {
         if (!numberId) return false;
         await delay(2000);
         return await client.sendMessage(numberId._serialized, text);
-      } catch (e) {
-        return false;
-      }
+      } catch (e) { return false; }
     }
     return false;
   }
 }
 
 app.use('/dist', express.static('public/dist'));
-app.use('/dist', express.static('public/dist'));
 app.use(express.static('public'));
 
 app.get('/status', (req, res) => {
-  res.json({ ready: clientReady, status: statusMessage, sentCount });
+  res.json({ ready: clientReady, status: statusMessage, sentCount, isSending });
 });
 
-// Fallback para SPA - não captura arquivos com extensão
 app.get('*', (req, res) => {
-  // Não retorna index.html para requisições de arquivos (com extensão)
-  if (req.path.includes('.')) {
-    return res.status(404).send('Not found');
-  }
-  res.sendFile(__dirname + '/public/dist/index.html');
+  if (req.path.includes('.')) return res.status(404).send('Not found');
+  res.sendFile(path.join(__dirname, 'public/dist/index.html'));
 });
 
 io.on('connection', (socket) => {
-  socket.emit('status', { status: statusMessage, sentCount, ready: clientReady });
+  sendUpdate();
+  
   socket.on('connectWhatsApp', async () => {
-    if (clientReady) {
-      socket.emit('log', '✅ Bot já está conectado.');
-      return;
+    await initializeClient();
+  });
+
+  socket.on('disconnectWhatsApp', async () => {
+    logToUi('🔌 Desconectando WhatsApp...');
+    if (client) {
+      try {
+        await client.destroy();
+        client = null;
+        clientReady = false;
+        statusMessage = 'WhatsApp desconectado.';
+        logToUi('✅ Desconectado com sucesso.');
+        io.emit('qr', null);
+        sendUpdate();
+      } catch (err) {
+        logToUi(`❌ Erro ao desconectar: ${err.message}`);
+      }
     }
-    if (clientInitializing) {
-      socket.emit('log', '⏳ Conexão em andamento. Aguarde o QR code.');
-      return;
-    }
+  });
+
+  socket.on('resetSession', async () => {
+    logToUi('♻️ Solicitando reset total de sessão...');
     try {
-      await initializeClient();
-      socket.emit('log', '🔌 Processo de autenticação iniciado. Aguarde o QR code.');
+      if (client) {
+        await client.destroy();
+        client = null;
+      }
+      clientReady = false;
+      clientInitializing = false;
+      statusMessage = 'Sessão removida. Aguardando nova autenticação...';
+      
+      const authPath = path.join(__dirname, '.wwebjs_auth');
+      if (fs.existsSync(authPath)) {
+        logToUi('📂 Removendo arquivos de sessão...');
+        await fs.promises.rm(authPath, { recursive: true, force: true });
+        logToUi('✅ Arquivos removidos.');
+      }
+      
+      io.emit('qr', null);
+      sendUpdate();
     } catch (err) {
-      statusMessage = 'Falha ao iniciar cliente';
-      logToUi(`❌ Erro ao inicializar WhatsApp: ${err.message}`);
-      io.emit('status', { status: statusMessage, sentCount, ready: false });
+      logToUi(`❌ Erro no reset: ${err.message}`);
     }
   });
 
   socket.on('start', async (data) => {
-    if (!clientReady) {
-      if (!clientInitializing) {
-        socket.emit('log', '🔌 Bot não está pronto. Iniciando autenticação...');
-        try {
-          await initializeClient();
-        } catch (err) {
-          statusMessage = 'Falha ao iniciar cliente';
-          logToUi(`❌ Erro ao inicializar WhatsApp: ${err.message}`);
-          io.emit('status', { status: statusMessage, sentCount, ready: false });
-          return;
-        }
-      } else {
-        socket.emit('log', '⏳ Autenticação em andamento. Aguarde o QR code.');
-      }
+    if (!clientReady || isSending) return;
 
-      if (!clientReady) {
-        socket.emit('log', '⚠️ Bot ainda não está pronto. Aguarde a autenticação do WhatsApp.');
-        return;
-      }
-    }
-    if (isSending) {
-      socket.emit('log', '⚠️ Campanha já em andamento.');
-      return;
-    }
-
-    const rawNumbers = data && typeof data.numbers === 'string' ? data.numbers : '';
-    const rawMessage = data && typeof data.message === 'string' ? data.message : '';
+    const rawNumbers = data?.numbers || '';
+    const rawMessage = data?.message || '';
     const targetNumbers = rawNumbers.trim().length ? parseNumbers(rawNumbers) : numbers;
     const customMessage = normalizeMessage(rawMessage);
 
     if (!targetNumbers.length) {
-      socket.emit('log', '⚠️ Nenhum número válido encontrado. Preencha o campo ou use a lista padrão.');
+      logToUi('⚠️ Nenhum número encontrado.');
       return;
     }
 
     isSending = true;
     sentCount = 0;
-    logToUi('🚀 Iniciando envio pelo web interface...');
-    io.emit('status', { status: 'Enviando mensagens...', sentCount, ready: true });
+    logToUi('🚀 Iniciando envio...');
+    sendUpdate();
 
     for (const number of targetNumbers) {
       if (!isSending) break;
       const cleanNumber = formatNumber(number);
-      if (!cleanNumber) {
-        logToUi(`⚠️ Número inválido ignorado: ${number}`);
-        continue;
-      }
+      if (!cleanNumber) continue;
+      
       const chatId = `${cleanNumber}@c.us`;
       try {
         const style = getMessageStyle(sentCount + 1);
         const messageText = customMessage.length ? customMessage : createMessage(style).text;
-        logToUi(`📤 Enviando para ${cleanNumber}` + (customMessage.length ? '' : ` (estilo ${style})`));
+        
         const isRegistered = await client.isRegisteredUser(chatId);
         if (!isRegistered) {
-          logToUi(`⚠️ Não existe no WhatsApp: ${cleanNumber}`);
+          logToUi(`⚠️ Não registrado: ${cleanNumber}`);
           continue;
         }
+
         await delay(3000);
         const ok = await safeSend(chatId, messageText);
-        if (!ok) {
-          logToUi(`❌ Falhou envio: ${cleanNumber}`);
-          continue;
+        if (ok) {
+          sentCount++;
+          logToUi(`✅ Enviado para ${cleanNumber} (${sentCount}/${targetNumbers.length})`);
+          sendUpdate();
         }
-        sentCount += 1;
-        logToUi(`✅ Enviado (${sentCount}/${targetNumbers.length})`);
-        io.emit('status', { status: 'Enviando mensagens...', sentCount, ready: true });
         await delay(randomDelay());
       } catch (err) {
-        logToUi(`❌ Erro no número ${cleanNumber}: ${err.message}`);
+        logToUi(`❌ Erro em ${cleanNumber}: ${err.message}`);
       }
     }
 
     isSending = false;
-    logToUi('🏁 Disparo finalizado');
-    io.emit('status', { status: 'Campanha finalizada', sentCount, ready: true });
+    statusMessage = 'Disparo finalizado.';
+    logToUi('🏁 Fim do processo.');
+    sendUpdate();
   });
 
   socket.on('stop', () => {
-    if (isSending) {
-      isSending = false;
-      logToUi('⏹️ Campanha interrompida pelo usuário.');
-      io.emit('status', { status: 'Interrompido', sentCount, ready: clientReady });
-    }
+    isSending = false;
+    logToUi('⏹️ Envio interrompido.');
+    sendUpdate();
   });
 });
 
 server.listen(port, () => {
-  console.log(`🌐 Interface web disponível em http://localhost:${port}`);
+  console.log(`🌐 Servidor em http://localhost:${port}`);
 });
