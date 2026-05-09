@@ -13,6 +13,7 @@ function App() {
   const [numbers, setNumbers] = useState('')
   const [message, setMessage] = useState('')
   const socketRef = useRef(null)
+  const logsContainerRef = useRef(null)
 
   useEffect(() => {
     const socket = io()
@@ -40,15 +41,21 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const el = logsContainerRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [logs])
+
   function addLog(message) {
     if (!message) return;
     const time = new Date().toLocaleTimeString()
     setLogs(prev => {
-      if (prev.length > 0 && prev[0].text.includes(message)) return prev;
+      if (prev.length > 0 && prev[prev.length - 1].text.includes(message)) return prev
       return [
-        { id: Math.random().toString(36).substr(2, 9), text: `${time} - ${message}` },
         ...prev,
-      ].slice(0, 50)
+        { id: Math.random().toString(36).substr(2, 9), text: `${time} - ${message}` },
+      ].slice(-50)
     })
   }
 
@@ -141,7 +148,7 @@ function App() {
 
       <div className="card">
         <strong>Logs</strong>
-        <div className="logs">
+        <div className="logs" ref={logsContainerRef}>
           {logs.map(entry => (
             <div key={entry.id}>{entry.text}</div>
           ))}
