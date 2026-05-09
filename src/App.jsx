@@ -117,31 +117,13 @@ function App() {
               Desconectar WP
             </button>
           )}
-          <div className="brandmark" aria-hidden="true">
-            <svg className="brandmark-svg" viewBox="0 0 240 240" fill="none">
-              <defs>
-                <linearGradient id="bfrBorder" x1="0" y1="0" x2="240" y2="240" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#ffcc66" />
-                  <stop offset="1" stopColor="#ff9f1c" />
-                </linearGradient>
-                <linearGradient id="bfrLine" x1="40" y1="120" x2="200" y2="120" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#2b87ff" />
-                  <stop offset="0.6" stopColor="#1ef0c8" />
-                  <stop offset="1" stopColor="#00ff95" />
-                </linearGradient>
-              </defs>
-              <circle cx="120" cy="120" r="110" fill="#05060b" stroke="url(#bfrBorder)" strokeWidth="10" />
-              <rect x="52" y="46" rx="18" ry="18" width="90" height="48" fill="#ffffff" opacity="0.95" />
-              <circle cx="160" cy="70" r="16" fill="#1ef0c8" />
-              <path d="M48 120h144" stroke="url(#bfrLine)" strokeWidth="10" strokeLinecap="round" />
-              <text x="120" y="170" textAnchor="middle" fontSize="84" fontWeight="800" fill="#ffffff" fontFamily="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial">
-                BFR
-              </text>
-              <text x="120" y="204" textAnchor="middle" fontSize="20" letterSpacing="6" fill="rgba(255,255,255,0.78)" fontFamily="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial">
-                INVESTIMENTOS
-              </text>
-            </svg>
-          </div>
+        </div>
+        <div className="brandmark" aria-hidden="true">
+          <img
+            className="brandmark-img"
+            src="/BFR%202.png"
+            alt=""
+          />
         </div>
       </header>
 

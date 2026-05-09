@@ -36,10 +36,11 @@ body {
 }
 
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  column-gap: 16px;
+  row-gap: 12px;
   margin-bottom: 18px;
 }
 
@@ -60,23 +61,24 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .brandmark {
-  height: 44px;
-  width: 44px;
+  height: 64px;
+  width: 64px;
   border-radius: 999px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(0, 0, 0, 0.25);
-  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.35);
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
-.brandmark-svg {
+.brandmark-img {
   display: block;
   height: 100%;
   width: 100%;
+  object-fit: contain;
 }
 
 .layout {
@@ -115,23 +117,33 @@ body {
 }
 
 .add-row {
-  display: grid;
-  grid-template-columns: 1fr 120px;
-  gap: 10px;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
   margin-bottom: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(2, 6, 14, 0.55);
+  overflow: hidden;
 }
 
 .input {
+  flex: 1;
   height: 42px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(2, 6, 14, 0.55);
+  border-radius: 0;
+  border: none;
+  background: transparent;
   color: rgba(255, 255, 255, 0.92);
   padding: 0 12px;
   outline: none;
+  min-width: 0;
 }
 
 .input:focus {
+  box-shadow: none;
+}
+
+.add-row:focus-within {
   border-color: rgba(80, 160, 255, 0.55);
   box-shadow: 0 0 0 4px rgba(70, 150, 255, 0.12);
 }
@@ -205,6 +217,14 @@ body {
 
 .btn-wide {
   width: 100%;
+}
+
+.add-row .btn {
+  border-radius: 0;
+  width: 132px;
+  flex: 0 0 auto;
+  box-shadow: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .hint-card {
@@ -426,5 +446,18 @@ body {
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 740px) {
+  .topbar {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+  .brandmark {
+    justify-self: end;
+  }
+  .topbar-actions {
+    flex-wrap: wrap;
   }
 }
