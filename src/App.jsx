@@ -10,8 +10,9 @@ function App() {
   })
   const [qrSrc, setQrSrc] = useState(null)
   const [logs, setLogs] = useState([])
-  const [numbers, setNumbers] = useState('')
   const [message, setMessage] = useState('')
+  const [contactInput, setContactInput] = useState('')
+  const [contacts, setContacts] = useState([])
   const socketRef = useRef(null)
   const logsContainerRef = useRef(null)
 
@@ -47,6 +48,23 @@ function App() {
     el.scrollTop = el.scrollHeight
   }, [logs])
 
+  function normalizeContact(value) {
+    return String(value || '').trim()
+  }
+
+  function addContact(value) {
+    const normalized = normalizeContact(value)
+    if (!normalized) return
+    setContacts(prev => {
+      if (prev.includes(normalized)) return prev
+      return [...prev, normalized]
+    })
+  }
+
+  function removeContact(value) {
+    setContacts(prev => prev.filter(item => item !== value))
+  }
+
   function addLog(message) {
     if (!message) return;
     const time = new Date().toLocaleTimeString()
@@ -71,6 +89,7 @@ function App() {
   }
 
   function handleStart() {
+    const numbers = contacts.length ? contacts.join('\n') : ''
     socketRef.current?.emit('start', { numbers, message })
   }
 
@@ -79,81 +98,192 @@ function App() {
   }
 
   return (
-    <div className="container">
-      <h1>Guedes AI</h1>
-
-      <div className="card status">
-        <div>
-          <strong>Status:</strong> <span>{botState.status}</span>
+    <div className="app">
+      <header className="topbar">
+        <div className="topbar-left">
+          <div className="topbar-title">Guedes AI</div>
+          <div className="topbar-subtitle">Contatos para envio · adicione os números de WhatsApp e envie sua mensagem.</div>
         </div>
-        <div>
-          <strong>Mensagens enviadas:</strong> <span>{botState.sentCount}</span>
-        </div>
-      </div>
-
-      <div className="card qr-card">
-        <strong>QR Code:</strong>
-        {qrSrc ? (
-          <img src={qrSrc} alt="QR Code do WhatsApp" />
-        ) : (
-          <div className="qr-placeholder">
-            {botState.ready ? '✅ WhatsApp Conectado' : 'Aguardando geração do QR code...'}
+        <div className="topbar-actions">
+          <button className="btn btn-ghost" disabled>
+            Importar da agenda
+          </button>
+          {!botState.ready ? (
+            <button className="btn btn-primary" onClick={handleConnect}>
+              Autenticar WhatsApp
+            </button>
+          ) : (
+            <button className="btn btn-danger" onClick={handleDisconnect}>
+              Desconectar WP
+            </button>
+          )}
+          <div className="brandmark" aria-hidden="true">
+            <svg className="brandmark-svg" viewBox="0 0 240 240" fill="none">
+              <defs>
+                <linearGradient id="bfrBorder" x1="0" y1="0" x2="240" y2="240" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#ffcc66" />
+                  <stop offset="1" stopColor="#ff9f1c" />
+                </linearGradient>
+                <linearGradient id="bfrLine" x1="40" y1="120" x2="200" y2="120" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#2b87ff" />
+                  <stop offset="0.6" stopColor="#1ef0c8" />
+                  <stop offset="1" stopColor="#00ff95" />
+                </linearGradient>
+              </defs>
+              <circle cx="120" cy="120" r="110" fill="#05060b" stroke="url(#bfrBorder)" strokeWidth="10" />
+              <rect x="52" y="46" rx="18" ry="18" width="90" height="48" fill="#ffffff" opacity="0.95" />
+              <circle cx="160" cy="70" r="16" fill="#1ef0c8" />
+              <path d="M48 120h144" stroke="url(#bfrLine)" strokeWidth="10" strokeLinecap="round" />
+              <text x="120" y="170" textAnchor="middle" fontSize="84" fontWeight="800" fill="#ffffff" fontFamily="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial">
+                BFR
+              </text>
+              <text x="120" y="204" textAnchor="middle" fontSize="20" letterSpacing="6" fill="rgba(255,255,255,0.78)" fontFamily="Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial">
+                INVESTIMENTOS
+              </text>
+            </svg>
           </div>
-        )}
-      </div>
+        </div>
+      </header>
 
-      <div className="card">
-        <strong>Números para envio</strong>
-        <textarea
-          value={numbers}
-          onChange={e => setNumbers(e.target.value)}
-          placeholder="5511999999999"
-          rows="4"
-        ></textarea>
-      </div>
+      <main className="layout">
+        <section className="panel panel-left">
+          <div className="panel-title">Adicionar número</div>
+          <div className="add-row">
+            <input
+              className="input"
+              value={contactInput}
+              onChange={e => setContactInput(e.target.value)}
+              placeholder="(11) 99999-9999"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addContact(contactInput)
+                  setContactInput('')
+                }
+              }}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                addContact(contactInput)
+                setContactInput('')
+              }}
+            >
+              Adicionar
+            </button>
+          </div>
 
-      <div className="card">
-        <strong>Mensagem</strong>
-        <textarea
-          value={message}
-          onChange={e => setMessage(e.target.value)}
-          placeholder="Olá..."
-          rows="4"
-        ></textarea>
-      </div>
+          <div className="hint-card">
+            <div className="hint-title">Dica</div>
+            <div className="hint-text">Adicione os números com código de área.</div>
+            <div className="hint-text">Exemplo: (11) 99999-9999</div>
+          </div>
 
-      <div className="card actions">
-        {!botState.ready ? (
-          <button className="primary" onClick={handleConnect}>
-            Autenticar WhatsApp
-          </button>
-        ) : (
-          <button className="danger" onClick={handleDisconnect}>
-            Desconectar WP
-          </button>
-        )}
+          <div className="panel-title">Mensagem</div>
+          <textarea
+            className="textarea"
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            placeholder="Digite a mensagem que será enviada..."
+            rows={6}
+          />
 
-        <button 
-          className="primary" 
-          onClick={handleStart} 
-          disabled={!botState.ready || botState.isSending}
-        >
-          {botState.isSending ? 'Enviando...' : 'Iniciar envio'}
-        </button>
+          <div className="status-mini">
+            <div className="status-line">
+              <span className="status-label">Status</span>
+              <span className="status-value">{botState.status}</span>
+            </div>
+            <div className="status-line">
+              <span className="status-label">Enviadas</span>
+              <span className="status-value">{botState.sentCount}</span>
+            </div>
+          </div>
+        </section>
 
-        <button className="danger" onClick={handleStop} disabled={!botState.isSending}>
-          Parar envio
-        </button>
-      </div>
+        <section className="panel panel-center">
+          <div className="panel-header">
+            <div className="panel-title">Lista de contatos ({contacts.length})</div>
+            <div className="panel-note">Somente número e status.</div>
+          </div>
 
-      <div className="card">
-        <strong>Logs</strong>
+          <div className="table">
+            <div className="table-head">
+              <div>NÚMERO</div>
+              <div className="table-status">STATUS</div>
+              <div className="table-actions" />
+            </div>
+            <div className="table-body">
+              {contacts.length ? (
+                contacts.map(number => (
+                  <div className="table-row" key={number}>
+                    <div className="table-number">{number}</div>
+                    <div className="table-status">
+                      <span className={`badge ${botState.ready ? 'badge-ok' : 'badge-warn'}`}>
+                        {botState.ready ? 'Pronto' : 'Aguardando'}
+                      </span>
+                    </div>
+                    <div className="table-actions">
+                      <button className="icon-btn" onClick={() => removeContact(number)} aria-label="Remover">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M9 3h6m-8 4h10m-9 0 1 16h6l1-16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="empty">
+                  Nenhum contato adicionado ainda.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="panel panel-right">
+          <div className="ready-card">
+            <div className="ready-label">PRONTO PARA ENVIAR</div>
+            <div className="plane">
+              <svg width="84" height="84" viewBox="0 0 24 24" fill="none">
+                <path d="M22 2 11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M22 2 15 22l-4-9-9-4 20-7Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div className="ready-count">{contacts.length} contatos</div>
+            <button
+              className="btn btn-primary btn-wide"
+              onClick={handleStart}
+              disabled={!botState.ready || botState.isSending || !contacts.length}
+            >
+              {botState.isSending ? 'Enviando...' : 'Enviar mensagens'}
+            </button>
+            <button className="btn btn-danger btn-wide" onClick={handleStop} disabled={!botState.isSending}>
+              Parar envio
+            </button>
+            <div className="ready-footnote">As mensagens serão enviadas via WhatsApp.</div>
+          </div>
+
+          <div className="qr-card">
+            <div className="qr-title">QR Code</div>
+            {qrSrc ? (
+              <img className="qr-img" src={qrSrc} alt="QR Code do WhatsApp" />
+            ) : (
+              <div className="qr-placeholder">
+                {botState.ready ? '✅ WhatsApp Conectado' : 'Aguardando geração do QR code...'}
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+
+      <section className="logs-panel">
+        <div className="logs-title">Logs</div>
         <div className="logs" ref={logsContainerRef}>
           {logs.map(entry => (
             <div key={entry.id}>{entry.text}</div>
           ))}
         </div>
-      </div>
+      </section>
     </div>
   )
 }
