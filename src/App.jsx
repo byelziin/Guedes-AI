@@ -80,7 +80,7 @@ function App() {
 
   return (
     <div className="container">
-      <h1>Bot Cris - Interface Web</h1>
+      <h1>Guedes AI</h1>
 
       <div className="card status">
         <div>
