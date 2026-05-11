@@ -13,12 +13,22 @@ function App() {
   const [message, setMessage] = useState('')
   const [contactInput, setContactInput] = useState('')
   const [contacts, setContacts] = useState([])
+  const [accessToken, setAccessToken] = useState(() => localStorage.getItem('bot_access_token') || '')
   const socketRef = useRef(null)
   const logsContainerRef = useRef(null)
 
   useEffect(() => {
     const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined
-    const socket = io(socketUrl, { path: '/socket.io' })
+    const token = accessToken || window.prompt('Chave de acesso do servidor (aparece no terminal do npm start):') || ''
+    if (!token) {
+      addLog('❌ Chave de acesso não informada. Não foi possível conectar.')
+      return
+    }
+    if (token !== accessToken) {
+      localStorage.setItem('bot_access_token', token)
+      setAccessToken(token)
+    }
+    const socket = io(socketUrl, { path: '/socket.io', auth: { token } })
     socketRef.current = socket
 
     socket.on('connect', () => addLog('Conectado ao servidor.'))
@@ -46,7 +56,7 @@ function App() {
     return () => {
       socket.disconnect()
     }
-  }, [])
+  }, [accessToken])
 
   useEffect(() => {
     const el = logsContainerRef.current
@@ -113,6 +123,17 @@ function App() {
         <div className="topbar-actions">
           <button className="btn btn-ghost" disabled>
             Importar da agenda
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              const token = window.prompt('Nova chave de acesso do servidor:') || ''
+              if (!token) return
+              localStorage.setItem('bot_access_token', token)
+              setAccessToken(token)
+            }}
+          >
+            Trocar chave
           </button>
           {!botState.ready ? (
             <button className="btn btn-primary" onClick={handleConnect}>

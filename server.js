@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { Server } = require('socket.io');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
@@ -19,12 +20,20 @@ const io = new Server(server, {
 });
 
 const port = process.env.PORT || 3000;
+const accessToken = process.env.BOT_ACCESS_TOKEN || crypto.randomBytes(16).toString('hex');
+console.log(`🔐 Chave de acesso da interface: ${accessToken}`);
 let isSending = false;
 let sentCount = 0;
 let statusMessage = 'Aguardando autenticação...';
 let client = null;
 let clientInitializing = false;
 let clientReady = false;
+
+io.use((socket, next) => {
+  const token = socket.handshake?.auth?.token;
+  if (token && token === accessToken) return next();
+  next(new Error('unauthorized'));
+});
 
 function createClient() {
   const newClient = new Client({
