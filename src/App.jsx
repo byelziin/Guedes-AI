@@ -121,7 +121,7 @@ function App() {
         <div className="brandmark" aria-hidden="true">
           <img
             className="brandmark-img"
-            src="/BFR%202.png"
+            src={`${import.meta.env.BASE_URL}BFR%202.png`}
             alt=""
           />
         </div>
