@@ -27,6 +27,7 @@ jobs:
       - run: npm run build
         env:
           VITE_BASE: "/${{ github.event.repository.name }}/"
+          VITE_SOCKET_URL: "${{ vars.VITE_SOCKET_URL }}"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
