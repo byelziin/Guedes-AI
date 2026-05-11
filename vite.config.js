@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/',
+  base: process.env.VITE_BASE || '/',
   server: {
     proxy: {
       '/socket.io': {
