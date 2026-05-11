@@ -148,7 +148,7 @@ async function safeSend(chatId, text) {
   }
 }
 
-app.use('/dist', express.static('public/dist'));
+app.use(express.static('dist'));
 app.use(express.static('public'));
 
 app.get('/status', (req, res) => {
@@ -157,7 +157,7 @@ app.get('/status', (req, res) => {
 
 app.get('*', (req, res) => {
   if (req.path.includes('.')) return res.status(404).send('Not found');
-  res.sendFile(path.join(__dirname, 'public/dist/index.html'));
+  res.sendFile(path.join(__dirname, 'dist/index.html'));
 });
 
 io.on('connection', (socket) => {
