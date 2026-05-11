@@ -17,10 +17,16 @@ function App() {
   const logsContainerRef = useRef(null)
 
   useEffect(() => {
-    const socket = io()
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined
+    const socket = io(socketUrl, { path: '/socket.io' })
     socketRef.current = socket
 
     socket.on('connect', () => addLog('Conectado ao servidor.'))
+    socket.on('connect_error', err => {
+      const originLabel = socketUrl ? socketUrl : 'mesma origem'
+      addLog(`❌ Falha ao conectar no servidor (${originLabel}): ${err.message}`)
+    })
+    socket.on('disconnect', reason => addLog(`⚠️ Desconectado: ${reason}`))
 
     socket.on('status', data => {
       setBotState({

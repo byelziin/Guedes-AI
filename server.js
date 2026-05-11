@@ -11,7 +11,12 @@ const createMessage = require('./message');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
 
 const port = process.env.PORT || 3000;
 let isSending = false;
@@ -150,6 +155,10 @@ async function safeSend(chatId, text) {
 
 app.use(express.static('dist'));
 app.use(express.static('public'));
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  next();
+});
 
 app.get('/status', (req, res) => {
   res.json({ ready: clientReady, status: statusMessage, sentCount, isSending });
