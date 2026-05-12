@@ -14,11 +14,12 @@ function App() {
   const [contactInput, setContactInput] = useState('')
   const [contacts, setContacts] = useState([])
   const [accessToken, setAccessToken] = useState(() => localStorage.getItem('bot_access_token') || '')
+  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem('bot_server_url') || import.meta.env.VITE_SOCKET_URL || '')
   const socketRef = useRef(null)
   const logsContainerRef = useRef(null)
 
   useEffect(() => {
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined
+    const socketUrl = serverUrl ? serverUrl : undefined
     const token = accessToken || window.prompt('Chave de acesso do servidor (aparece no terminal do npm start):') || ''
     if (!token) {
       addLog('❌ Chave de acesso não informada. Não foi possível conectar.')
@@ -56,7 +57,7 @@ function App() {
     return () => {
       socket.disconnect()
     }
-  }, [accessToken])
+  }, [accessToken, serverUrl])
 
   useEffect(() => {
     const el = logsContainerRef.current
@@ -123,6 +124,19 @@ function App() {
         <div className="topbar-actions">
           <button className="btn btn-ghost" disabled>
             Importar da agenda
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              const current = localStorage.getItem('bot_server_url') || ''
+              const next = window.prompt('URL do servidor (ex: https://xxxx.trycloudflare.com). Deixe vazio para usar a mesma origem:', current) ?? current
+              const normalized = String(next || '').trim()
+              if (normalized) localStorage.setItem('bot_server_url', normalized)
+              else localStorage.removeItem('bot_server_url')
+              setServerUrl(normalized)
+            }}
+          >
+            Trocar servidor
           </button>
           <button
             className="btn btn-ghost"

@@ -175,7 +175,13 @@ app.get('/status', (req, res) => {
 
 app.get('*', (req, res) => {
   if (req.path.includes('.')) return res.status(404).send('Not found');
-  res.sendFile(path.join(__dirname, 'dist/index.html'));
+  const indexPath = path.join(__dirname, 'dist', 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    return res
+      .status(200)
+      .send('Backend rodando. Frontend não foi buildado (rode: npm run build).');
+  }
+  res.sendFile(indexPath);
 });
 
 io.on('connection', (socket) => {
