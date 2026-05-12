@@ -20,104 +20,150 @@ const io = new Server(server, {
 });
 
 const port = process.env.PORT || 3000;
-const accessToken = process.env.BOT_ACCESS_TOKEN || crypto.randomBytes(16).toString('hex');
-console.log(`🔐 Chave de acesso da interface: ${accessToken}`);
-let isSending = false;
-let sentCount = 0;
-let statusMessage = 'Aguardando autenticação...';
-let client = null;
-let clientInitializing = false;
-let clientReady = false;
+function parseAllowedTokens() {
+  const rawList = process.env.BOT_ACCESS_TOKENS || '';
+  const rawSingle = process.env.BOT_ACCESS_TOKEN || '';
+  const tokens = [];
+
+  if (rawList.trim().length) tokens.push(...rawList.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean));
+  if (rawSingle.trim().length) tokens.push(rawSingle.trim());
+
+  const unique = [...new Set(tokens)];
+  if (unique.length) return unique;
+  return [crypto.randomBytes(16).toString('hex')];
+}
+
+function tokenToId(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex').slice(0, 8);
+}
+
+const allowedTokens = parseAllowedTokens();
+const allowedTokenSet = new Set(allowedTokens);
+if (allowedTokens.length === 1) {
+  console.log(`🔐 Chave de acesso da interface: ${allowedTokens[0]}`);
+} else {
+  console.log(`🔐 Chaves de acesso carregadas: ${allowedTokens.length}`);
+  allowedTokens.forEach((t, idx) => console.log(`🔐 Chave ${idx + 1}: ${t}`));
+}
 
 io.use((socket, next) => {
   const token = socket.handshake?.auth?.token;
-  if (token && token === accessToken) return next();
+  const safeToken = String(token || '').trim();
+  if (safeToken && allowedTokenSet.has(safeToken)) {
+    socket.data.token = safeToken;
+    return next();
+  }
   next(new Error('unauthorized'));
 });
 
-function createClient() {
+const tenants = new Map();
+
+function getTenant(token) {
+  const safeToken = String(token || '').trim();
+  if (!safeToken) return null;
+  if (!allowedTokenSet.has(safeToken)) return null;
+  const existing = tenants.get(safeToken);
+  if (existing) return existing;
+
+  const id = tokenToId(safeToken);
+  const tenant = {
+    token: safeToken,
+    id,
+    clientId: `web-interface-${id}`,
+    client: null,
+    initializing: false,
+    ready: false,
+    isSending: false,
+    sentCount: 0,
+    statusMessage: 'Aguardando autenticação...',
+  };
+  tenants.set(safeToken, tenant);
+  return tenant;
+}
+
+function logToUi(tenant, message) {
+  console.log(`[${tenant.id}] ${message}`);
+  io.to(tenant.token).emit('log', message);
+}
+
+function sendUpdate(tenant) {
+  io.to(tenant.token).emit('status', {
+    status: tenant.statusMessage,
+    sentCount: tenant.sentCount,
+    ready: tenant.ready,
+    isSending: tenant.isSending,
+  });
+}
+
+function createClient(tenant) {
   const newClient = new Client({
-    authStrategy: new LocalAuth({ clientId: 'web-interface' }),
+    authStrategy: new LocalAuth({ clientId: tenant.clientId }),
     puppeteer: {
-      headless: false, // Voltado para false conforme solicitado
+      headless: false,
       executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-extensions']
-    }
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-extensions'],
+    },
   });
 
   newClient.on('qr', async (qr) => {
     try {
       const url = await qrcode.toDataURL(qr);
-      statusMessage = 'Aguardando escaneamento do QR code...';
-      logToUi('📲 Novo QR code gerado. Escaneie pelo WhatsApp.');
-      io.emit('qr', url);
-      sendUpdate();
+      tenant.statusMessage = 'Aguardando escaneamento do QR code...';
+      logToUi(tenant, '📲 Novo QR code gerado. Escaneie pelo WhatsApp.');
+      io.to(tenant.token).emit('qr', url);
+      sendUpdate(tenant);
     } catch (err) {
-      logToUi('❌ Erro ao gerar QR code: ' + err.message);
+      logToUi(tenant, '❌ Erro ao gerar QR code: ' + err.message);
     }
   });
 
   newClient.on('ready', () => {
-    statusMessage = 'Bot conectado e pronto.';
-    clientReady = true;
-    logToUi('🚀 Bot pronto');
-    sendUpdate();
+    tenant.statusMessage = 'Bot conectado e pronto.';
+    tenant.ready = true;
+    logToUi(tenant, '🚀 Bot pronto');
+    sendUpdate(tenant);
   });
 
   newClient.on('auth_failure', (msg) => {
-    statusMessage = 'Falha na autenticação';
-    logToUi(`❌ Falha na autenticação: ${msg}`);
-    sendUpdate();
+    tenant.statusMessage = 'Falha na autenticação';
+    logToUi(tenant, `❌ Falha na autenticação: ${msg}`);
+    sendUpdate(tenant);
   });
 
   newClient.on('disconnected', (reason) => {
-    statusMessage = 'Cliente desconectado';
-    clientReady = false;
-    logToUi(`⚠️ Cliente desconectado: ${reason}`);
-    sendUpdate();
+    tenant.statusMessage = 'Cliente desconectado';
+    tenant.ready = false;
+    logToUi(tenant, `⚠️ Cliente desconectado: ${reason}`);
+    sendUpdate(tenant);
   });
 
   return newClient;
 }
 
-function sendUpdate() {
-  io.emit('status', { 
-    status: statusMessage, 
-    sentCount, 
-    ready: clientReady,
-    isSending 
-  });
-}
-
-async function initializeClient() {
-  if (clientReady) {
-    logToUi('⚠️ Cliente já está pronto.');
+async function initializeClient(tenant) {
+  if (tenant.ready) {
+    logToUi(tenant, '⚠️ Cliente já está pronto.');
     return;
   }
-  if (clientInitializing) {
-    logToUi('⏳ Inicialização já em andamento...');
+  if (tenant.initializing) {
+    logToUi(tenant, '⏳ Inicialização já em andamento...');
     return;
   }
 
-  clientInitializing = true;
-  statusMessage = 'Inicializando WhatsApp...';
-  sendUpdate();
-  logToUi('🔌 Inicializando cliente WhatsApp...');
+  tenant.initializing = true;
+  tenant.statusMessage = 'Inicializando WhatsApp...';
+  sendUpdate(tenant);
+  logToUi(tenant, '🔌 Inicializando cliente WhatsApp...');
 
   try {
-    client = createClient();
-    await client.initialize();
+    tenant.client = createClient(tenant);
+    await tenant.client.initialize();
   } catch (err) {
-    logToUi(`❌ Erro ao inicializar: ${err.message}`);
-    client = null;
+    logToUi(tenant, `❌ Erro ao inicializar: ${err.message}`);
+    tenant.client = null;
   } finally {
-    clientInitializing = false;
+    tenant.initializing = false;
   }
-}
-
-function logToUi(message) {
-  console.log(message);
-  io.emit('log', message);
 }
 
 function formatNumber(number) {
@@ -146,7 +192,7 @@ function getMessageStyle(sentCount) {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const randomDelay = () => Math.floor(Math.random() * 8000) + 15000;
 
-async function safeSend(chatId, text) {
+async function safeSend(client, chatId, text) {
   try {
     return await client.sendMessage(chatId, text);
   } catch (err) {
@@ -170,7 +216,16 @@ app.use((req, res, next) => {
 });
 
 app.get('/status', (req, res) => {
-  res.json({ ready: clientReady, status: statusMessage, sentCount, isSending });
+  const token = (req.query?.token || req.get('x-bot-token') || '').toString().trim();
+  const effectiveToken = token.length ? token : (allowedTokens.length === 1 ? allowedTokens[0] : '');
+  const tenant = getTenant(effectiveToken);
+  if (!tenant) return res.status(401).json({ error: 'unauthorized' });
+  res.json({
+    ready: tenant.ready,
+    status: tenant.statusMessage,
+    sentCount: tenant.sentCount,
+    isSending: tenant.isSending,
+  });
 });
 
 app.get('*', (req, res) => {
@@ -185,56 +240,64 @@ app.get('*', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  sendUpdate();
-  
+  const token = socket.data?.token;
+  const tenant = getTenant(token);
+  if (!tenant) {
+    socket.disconnect(true);
+    return;
+  }
+
+  socket.join(tenant.token);
+  sendUpdate(tenant);
+
   socket.on('connectWhatsApp', async () => {
-    await initializeClient();
+    await initializeClient(tenant);
   });
 
   socket.on('disconnectWhatsApp', async () => {
-    logToUi('🔌 Desconectando WhatsApp...');
-    if (client) {
+    logToUi(tenant, '🔌 Desconectando WhatsApp...');
+    if (tenant.client) {
       try {
-        await client.destroy();
-        client = null;
-        clientReady = false;
-        statusMessage = 'WhatsApp desconectado.';
-        logToUi('✅ Desconectado com sucesso.');
-        io.emit('qr', null);
-        sendUpdate();
+        await tenant.client.destroy();
+        tenant.client = null;
+        tenant.ready = false;
+        tenant.statusMessage = 'WhatsApp desconectado.';
+        logToUi(tenant, '✅ Desconectado com sucesso.');
+        io.to(tenant.token).emit('qr', null);
+        sendUpdate(tenant);
       } catch (err) {
-        logToUi(`❌ Erro ao desconectar: ${err.message}`);
+        logToUi(tenant, `❌ Erro ao desconectar: ${err.message}`);
       }
     }
   });
 
   socket.on('resetSession', async () => {
-    logToUi('♻️ Solicitando reset total de sessão...');
+    logToUi(tenant, '♻️ Solicitando reset total de sessão...');
     try {
-      if (client) {
-        await client.destroy();
-        client = null;
+      if (tenant.client) {
+        await tenant.client.destroy();
+        tenant.client = null;
       }
-      clientReady = false;
-      clientInitializing = false;
-      statusMessage = 'Sessão removida. Aguardando nova autenticação...';
+      tenant.ready = false;
+      tenant.initializing = false;
+      tenant.statusMessage = 'Sessão removida. Aguardando nova autenticação...';
       
-      const authPath = path.join(__dirname, '.wwebjs_auth');
+      const authPath = path.join(__dirname, '.wwebjs_auth', `session-${tenant.clientId}`);
       if (fs.existsSync(authPath)) {
-        logToUi('📂 Removendo arquivos de sessão...');
+        logToUi(tenant, '📂 Removendo arquivos de sessão...');
         await fs.promises.rm(authPath, { recursive: true, force: true });
-        logToUi('✅ Arquivos removidos.');
+        logToUi(tenant, '✅ Arquivos removidos.');
       }
       
-      io.emit('qr', null);
-      sendUpdate();
+      io.to(tenant.token).emit('qr', null);
+      sendUpdate(tenant);
     } catch (err) {
-      logToUi(`❌ Erro no reset: ${err.message}`);
+      logToUi(tenant, `❌ Erro no reset: ${err.message}`);
     }
   });
 
   socket.on('start', async (data) => {
-    if (!clientReady || isSending) return;
+    if (!tenant.ready || tenant.isSending || !tenant.client) return;
 
     const rawNumbers = data?.numbers || '';
     const rawMessage = data?.message || '';
@@ -242,54 +305,54 @@ io.on('connection', (socket) => {
     const customMessage = normalizeMessage(rawMessage);
 
     if (!targetNumbers.length) {
-      logToUi('⚠️ Nenhum número encontrado.');
+      logToUi(tenant, '⚠️ Nenhum número encontrado.');
       return;
     }
 
-    isSending = true;
-    sentCount = 0;
-    logToUi('🚀 Iniciando envio...');
-    sendUpdate();
+    tenant.isSending = true;
+    tenant.sentCount = 0;
+    logToUi(tenant, '🚀 Iniciando envio...');
+    sendUpdate(tenant);
 
     for (const number of targetNumbers) {
-      if (!isSending) break;
+      if (!tenant.isSending) break;
       const cleanNumber = formatNumber(number);
       if (!cleanNumber) continue;
       
       const chatId = `${cleanNumber}@c.us`;
       try {
-        const style = getMessageStyle(sentCount + 1);
+        const style = getMessageStyle(tenant.sentCount + 1);
         const messageText = customMessage.length ? customMessage : createMessage(style).text;
         
-        const isRegistered = await client.isRegisteredUser(chatId);
+        const isRegistered = await tenant.client.isRegisteredUser(chatId);
         if (!isRegistered) {
-          logToUi(`⚠️ Não registrado: ${cleanNumber}`);
+          logToUi(tenant, `⚠️ Não registrado: ${cleanNumber}`);
           continue;
         }
 
         await delay(3000);
-        const ok = await safeSend(chatId, messageText);
+        const ok = await safeSend(tenant.client, chatId, messageText);
         if (ok) {
-          sentCount++;
-          logToUi(`✅ Enviado para ${cleanNumber} (${sentCount}/${targetNumbers.length})`);
-          sendUpdate();
+          tenant.sentCount++;
+          logToUi(tenant, `✅ Enviado para ${cleanNumber} (${tenant.sentCount}/${targetNumbers.length})`);
+          sendUpdate(tenant);
         }
         await delay(randomDelay());
       } catch (err) {
-        logToUi(`❌ Erro em ${cleanNumber}: ${err.message}`);
+        logToUi(tenant, `❌ Erro em ${cleanNumber}: ${err.message}`);
       }
     }
 
-    isSending = false;
-    statusMessage = 'Disparo finalizado.';
-    logToUi('🏁 Fim do processo.');
-    sendUpdate();
+    tenant.isSending = false;
+    tenant.statusMessage = 'Disparo finalizado.';
+    logToUi(tenant, '🏁 Fim do processo.');
+    sendUpdate(tenant);
   });
 
   socket.on('stop', () => {
-    isSending = false;
-    logToUi('⏹️ Envio interrompido.');
-    sendUpdate();
+    tenant.isSending = false;
+    logToUi(tenant, '⏹️ Envio interrompido.');
+    sendUpdate(tenant);
   });
 });
 
