@@ -6,7 +6,9 @@ function App() {
     status: 'Carregando...',
     sentCount: 0,
     ready: false,
-    isSending: false
+    isSending: false,
+    cooldownUntil: null,
+    nextSendAt: null
   })
   const [qrSrc, setQrSrc] = useState(null)
   const [logs, setLogs] = useState([])
@@ -17,6 +19,7 @@ function App() {
   const [contacts, setContacts] = useState([])
   const [accessToken, setAccessToken] = useState(() => localStorage.getItem('bot_access_token') || '')
   const [serverUrl, setServerUrl] = useState(() => localStorage.getItem('bot_server_url') || import.meta.env.VITE_SOCKET_URL || '')
+  const [now, setNow] = useState(() => Date.now())
   const socketRef = useRef(null)
   const logsContainerRef = useRef(null)
 
@@ -46,7 +49,9 @@ function App() {
         status: data.status,
         sentCount: data.sentCount,
         ready: data.ready,
-        isSending: data.isSending
+        isSending: data.isSending,
+        cooldownUntil: data.cooldownUntil ?? null,
+        nextSendAt: data.nextSendAt ?? null
       })
     })
 
@@ -60,6 +65,11 @@ function App() {
       socket.disconnect()
     }
   }, [accessToken, serverUrl])
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     const el = logsContainerRef.current
@@ -115,6 +125,23 @@ function App() {
   function handleStop() {
     socketRef.current?.emit('stop')
   }
+
+  function formatDuration(ms) {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    const parts = [
+      hours ? String(hours).padStart(2, '0') : null,
+      String(minutes).padStart(2, '0'),
+      String(seconds).padStart(2, '0'),
+    ].filter(Boolean)
+    return parts.join(':')
+  }
+
+  const cooldownLeftMs = botState.cooldownUntil ? botState.cooldownUntil - now : 0
+  const nextSendLeftMs = botState.nextSendAt ? botState.nextSendAt - now : 0
+  const hasCooldown = cooldownLeftMs > 0
 
   return (
     <div className="app">
@@ -293,10 +320,20 @@ function App() {
               </svg>
             </div>
             <div className="ready-count">{contacts.length} contatos</div>
+          {hasCooldown ? (
+            <div className="timer-pill timer-warn">
+              Proteção ativa · aguarde {formatDuration(cooldownLeftMs)}
+            </div>
+          ) : null}
+          {!hasCooldown && botState.isSending && nextSendLeftMs > 0 ? (
+            <div className="timer-pill">
+              Próximo envio em {formatDuration(nextSendLeftMs)}
+            </div>
+          ) : null}
             <button
               className="btn btn-primary btn-wide"
               onClick={handleStart}
-              disabled={!botState.ready || botState.isSending || !contacts.length}
+            disabled={!botState.ready || botState.isSending || !contacts.length || hasCooldown}
             >
               {botState.isSending ? 'Enviando...' : 'Enviar mensagens'}
             </button>

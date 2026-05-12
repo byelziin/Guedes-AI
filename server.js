@@ -3,6 +3,16 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const dotenv = require('dotenv');
+
+const envPath = path.join(__dirname, '.env');
+const envExamplePath = path.join(__dirname, '.env.example');
+if (!fs.existsSync(envPath) && fs.existsSync(envExamplePath)) {
+  try {
+    fs.copyFileSync(envExamplePath, envPath);
+  } catch (e) { }
+}
+dotenv.config({ path: envPath });
 const { Server } = require('socket.io');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
@@ -20,6 +30,58 @@ const io = new Server(server, {
 });
 
 const port = process.env.PORT || 3000;
+function parseEnvInt(name, fallback) {
+  const raw = String(process.env[name] ?? '').trim();
+  if (!raw.length) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return n;
+}
+
+const SEND_LIMITS = {
+  maxPerRun: parseEnvInt('BOT_MAX_PER_RUN', 10),
+  maxPerHour: parseEnvInt('BOT_MAX_PER_HOUR', 20),
+  maxPerDay: parseEnvInt('BOT_MAX_PER_DAY', 50),
+};
+
+const SEND_THROTTLE = {
+  perContactDelayMs: parseEnvInt('BOT_DELAY_MS', 60000),
+  perContactJitterMs: parseEnvInt('BOT_DELAY_JITTER_MS', 5000),
+  breakEvery: parseEnvInt('BOT_BREAK_EVERY', 50),
+  breakDelayMs: parseEnvInt('BOT_BREAK_MS', 90 * 60 * 1000),
+};
+
+function pruneTimestamps(timestamps, cutoffMs) {
+  const out = [];
+  for (const ts of timestamps) {
+    if (typeof ts === 'number' && ts >= cutoffMs) out.push(ts);
+  }
+  return out;
+}
+
+function checkSendLimits(tenant) {
+  const now = Date.now();
+  const hourCutoff = now - 60 * 60 * 1000;
+  const dayCutoff = now - 24 * 60 * 60 * 1000;
+
+  tenant.sendTimestamps = pruneTimestamps(tenant.sendTimestamps || [], dayCutoff);
+  const hourCount = tenant.sendTimestamps.filter(ts => ts >= hourCutoff).length;
+  const dayCount = tenant.sendTimestamps.length;
+
+  if (SEND_LIMITS.maxPerHour > 0 && hourCount >= SEND_LIMITS.maxPerHour) {
+    const inHour = tenant.sendTimestamps.filter(ts => ts >= hourCutoff);
+    const oldest = inHour.length ? Math.min(...inHour) : now;
+    const waitMs = Math.max(0, oldest + 60 * 60 * 1000 - now);
+    return { ok: false, reason: `Limite por hora atingido (${hourCount}/${SEND_LIMITS.maxPerHour}).`, waitMs };
+  }
+  if (SEND_LIMITS.maxPerDay > 0 && dayCount >= SEND_LIMITS.maxPerDay) {
+    const oldest = dayCount ? Math.min(...tenant.sendTimestamps) : now;
+    const waitMs = Math.max(0, oldest + 24 * 60 * 60 * 1000 - now);
+    return { ok: false, reason: `Limite por dia atingido (${dayCount}/${SEND_LIMITS.maxPerDay}).`, waitMs };
+  }
+  return { ok: true };
+}
+
 function parseAllowedTokens() {
   const rawList = process.env.BOT_ACCESS_TOKENS || '';
   const rawSingle = process.env.BOT_ACCESS_TOKEN || '';
@@ -75,6 +137,9 @@ function getTenant(token) {
     ready: false,
     isSending: false,
     sentCount: 0,
+    sendTimestamps: [],
+    cooldownUntil: null,
+    nextSendAt: null,
     statusMessage: 'Aguardando autenticação...',
   };
   tenants.set(safeToken, tenant);
@@ -92,6 +157,8 @@ function sendUpdate(tenant) {
     sentCount: tenant.sentCount,
     ready: tenant.ready,
     isSending: tenant.isSending,
+    cooldownUntil: tenant.cooldownUntil,
+    nextSendAt: tenant.nextSendAt,
   });
 }
 
@@ -208,11 +275,34 @@ function buildCustomMessages(data) {
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const randomDelay = () => Math.floor(Math.random() * 8000) + 15000;
 
+function isFatalAutomationError(err) {
+  const message = String(err?.message || err || '');
+  return (
+    message.includes('Attempted to use detached Frame') ||
+    message.includes('Execution context was destroyed') ||
+    message.includes('Target closed') ||
+    message.includes('Session closed') ||
+    message.includes('Protocol error') ||
+    message.includes('Navigation failed') ||
+    message.includes('Cannot find context')
+  );
+}
+
+async function teardownClient(tenant) {
+  if (!tenant.client) return;
+  try {
+    await tenant.client.destroy();
+  } catch (e) { }
+  tenant.client = null;
+}
+
 async function safeSend(client, chatId, text) {
   try {
     return await client.sendMessage(chatId, text);
   } catch (err) {
-    if (err.message.includes('No LID for user')) {
+    if (isFatalAutomationError(err)) throw err;
+    const message = String(err?.message || err || '');
+    if (message.includes('No LID for user')) {
       try {
         const numberId = await client.getNumberId(chatId);
         if (!numberId) return false;
@@ -241,6 +331,8 @@ app.get('/status', (req, res) => {
     status: tenant.statusMessage,
     sentCount: tenant.sentCount,
     isSending: tenant.isSending,
+    cooldownUntil: tenant.cooldownUntil,
+    nextSendAt: tenant.nextSendAt,
   });
 });
 
@@ -315,20 +407,48 @@ io.on('connection', (socket) => {
   socket.on('start', async (data) => {
     if (!tenant.ready || tenant.isSending || !tenant.client) return;
 
+    const now = Date.now();
+    if (tenant.cooldownUntil && tenant.cooldownUntil > now) {
+      tenant.statusMessage = 'Aguardando cooldown de proteção antes de iniciar.';
+      sendUpdate(tenant);
+      logToUi(tenant, '🛑 Proteção ativa: aguarde o cooldown antes de iniciar outro disparo.');
+      return;
+    }
+
+    const beforeStartLimit = checkSendLimits(tenant);
+    if (!beforeStartLimit.ok) {
+      const waitMs = Math.max(0, beforeStartLimit.waitMs || 0);
+      tenant.cooldownUntil = Date.now() + waitMs;
+      tenant.statusMessage = `Proteção ativa: ${beforeStartLimit.reason}`;
+      sendUpdate(tenant);
+      logToUi(tenant, `🛑 Proteção ativa: ${beforeStartLimit.reason}`);
+      return;
+    }
+
     const rawNumbers = data?.numbers || '';
-    const targetNumbers = rawNumbers.trim().length ? parseNumbers(rawNumbers) : numbers;
+    const parsedNumbers = rawNumbers.trim().length ? parseNumbers(rawNumbers) : numbers;
     const customMessages = buildCustomMessages(data);
 
-    if (!targetNumbers.length) {
+    if (!parsedNumbers.length) {
       logToUi(tenant, '⚠️ Nenhum número encontrado.');
       return;
     }
 
+    const maxPerRun = Math.max(1, SEND_LIMITS.maxPerRun || 10);
+    const targetNumbers = parsedNumbers.slice(0, maxPerRun);
+    if (parsedNumbers.length > targetNumbers.length) {
+      logToUi(tenant, `🛡️ Proteção ativa: reduzindo disparo para ${targetNumbers.length} contatos (de ${parsedNumbers.length}).`);
+      logToUi(tenant, '🛡️ Para envio em larga escala com menor risco, use a API oficial do WhatsApp Business (Meta).');
+    }
+
     tenant.isSending = true;
     tenant.sentCount = 0;
+    tenant.cooldownUntil = null;
+    tenant.nextSendAt = null;
     logToUi(tenant, '🚀 Iniciando envio...');
     sendUpdate(tenant);
 
+    let fatalError = null;
     for (let idx = 0; idx < targetNumbers.length; idx++) {
       if (!tenant.isSending) break;
       const number = targetNumbers[idx];
@@ -343,23 +463,78 @@ io.on('connection', (socket) => {
         const isRegistered = await tenant.client.isRegisteredUser(chatId);
         if (!isRegistered) {
           logToUi(tenant, `⚠️ Não registrado: ${cleanNumber}`);
+        } else {
+          const limitCheck = checkSendLimits(tenant);
+          if (!limitCheck.ok) {
+            const waitMs = Math.max(0, limitCheck.waitMs || 0);
+            tenant.cooldownUntil = Date.now() + waitMs;
+            tenant.statusMessage = `Proteção ativa: ${limitCheck.reason}`;
+            sendUpdate(tenant);
+            logToUi(tenant, `🛑 Envio pausado por proteção: ${limitCheck.reason}`);
+            break;
+          }
+
+          await delay(3000);
+          const ok = await safeSend(tenant.client, chatId, messageText);
+          if (ok) {
+            tenant.sentCount++;
+            tenant.sendTimestamps.push(Date.now());
+            logToUi(tenant, `✅ Enviado para ${cleanNumber} (${tenant.sentCount}/${targetNumbers.length})`);
+            sendUpdate(tenant);
+          }
+        }
+
+        const isLast = idx === targetNumbers.length - 1;
+        if (isLast) continue;
+
+        const breakEvery = Math.max(0, SEND_THROTTLE.breakEvery || 0);
+        const breakDelayMs = Math.max(0, SEND_THROTTLE.breakDelayMs || 0);
+        if (breakEvery > 0 && breakDelayMs > 0 && (idx + 1) % breakEvery === 0) {
+          tenant.cooldownUntil = Date.now() + breakDelayMs;
+          tenant.nextSendAt = null;
+          tenant.statusMessage = 'Pausa de proteção em andamento.';
+          sendUpdate(tenant);
+          logToUi(tenant, '⏸️ Pausa de proteção iniciada.');
+          while (tenant.isSending && tenant.cooldownUntil && Date.now() < tenant.cooldownUntil) {
+            await delay(1000);
+          }
+          if (!tenant.isSending) break;
+          tenant.cooldownUntil = null;
+          tenant.statusMessage = 'Retomando envio...';
+          sendUpdate(tenant);
           continue;
         }
 
-        await delay(3000);
-        const ok = await safeSend(tenant.client, chatId, messageText);
-        if (ok) {
-          tenant.sentCount++;
-          logToUi(tenant, `✅ Enviado para ${cleanNumber} (${tenant.sentCount}/${targetNumbers.length})`);
-          sendUpdate(tenant);
-        }
-        await delay(randomDelay());
+        const baseDelayMs = Math.max(0, SEND_THROTTLE.perContactDelayMs || 0);
+        const jitterMs = Math.max(0, SEND_THROTTLE.perContactJitterMs || 0);
+        const perDelayMs = baseDelayMs + (jitterMs ? Math.floor(Math.random() * (jitterMs + 1)) : 0);
+        tenant.nextSendAt = Date.now() + perDelayMs;
+        sendUpdate(tenant);
+        await delay(perDelayMs);
       } catch (err) {
-        logToUi(tenant, `❌ Erro em ${cleanNumber}: ${err.message}`);
+        if (isFatalAutomationError(err)) {
+          fatalError = err;
+          break;
+        }
+        const msg = String(err?.message || err || '');
+        logToUi(tenant, `❌ Erro em ${cleanNumber}: ${msg}`);
+        await delay(1500);
       }
     }
 
     tenant.isSending = false;
+    tenant.cooldownUntil = null;
+    tenant.nextSendAt = null;
+    if (fatalError) {
+      tenant.ready = false;
+      tenant.statusMessage = 'WhatsApp perdeu a sessão do navegador. Autentique novamente.';
+      logToUi(tenant, `🛑 Envio interrompido: ${fatalError.message}`);
+      await teardownClient(tenant);
+      io.to(tenant.token).emit('qr', null);
+      sendUpdate(tenant);
+      return;
+    }
+
     tenant.statusMessage = 'Disparo finalizado.';
     logToUi(tenant, '🏁 Fim do processo.');
     sendUpdate(tenant);
@@ -367,6 +542,8 @@ io.on('connection', (socket) => {
 
   socket.on('stop', () => {
     tenant.isSending = false;
+    tenant.cooldownUntil = null;
+    tenant.nextSendAt = null;
     logToUi(tenant, '⏹️ Envio interrompido.');
     sendUpdate(tenant);
   });
