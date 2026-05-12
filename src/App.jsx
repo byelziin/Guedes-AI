@@ -11,6 +11,8 @@ function App() {
   const [qrSrc, setQrSrc] = useState(null)
   const [logs, setLogs] = useState([])
   const [message, setMessage] = useState('')
+  const [message2, setMessage2] = useState('')
+  const [message3, setMessage3] = useState('')
   const [contactInput, setContactInput] = useState('')
   const [contacts, setContacts] = useState([])
   const [accessToken, setAccessToken] = useState(() => localStorage.getItem('bot_access_token') || '')
@@ -107,7 +109,7 @@ function App() {
 
   function handleStart() {
     const numbers = contacts.length ? contacts.join('\n') : ''
-    socketRef.current?.emit('start', { numbers, message })
+    socketRef.current?.emit('start', { numbers, message, message2, message3 })
   }
 
   function handleStop() {
@@ -208,6 +210,24 @@ function App() {
             value={message}
             onChange={e => setMessage(e.target.value)}
             placeholder="Digite a mensagem que será enviada..."
+            rows={6}
+          />
+
+          <div className="panel-title">Mensagem 2 (após 6 contatos)</div>
+          <textarea
+            className="textarea"
+            value={message2}
+            onChange={e => setMessage2(e.target.value)}
+            placeholder="Opcional: segunda variação da mensagem..."
+            rows={6}
+          />
+
+          <div className="panel-title">Mensagem 3 (após 12 contatos)</div>
+          <textarea
+            className="textarea"
+            value={message3}
+            onChange={e => setMessage3(e.target.value)}
+            placeholder="Opcional: terceira variação da mensagem..."
             rows={6}
           />
 

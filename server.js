@@ -183,10 +183,26 @@ function normalizeMessage(raw) {
   return typeof raw === 'string' ? raw.trim() : '';
 }
 
-function getMessageStyle(sentCount) {
-  if (sentCount % 12 === 6) return 2;
-  if (sentCount % 12 === 0) return 3;
-  return 1;
+function getMessageStyleByContactIndex(contactIndex) {
+  const chunkSize = 6;
+  const variantCount = 3;
+  return (Math.floor(contactIndex / chunkSize) % variantCount) + 1;
+}
+
+function buildCustomMessages(data) {
+  const raw1 = data?.message || '';
+  const raw2 = data?.message2 || '';
+  const raw3 = data?.message3 || '';
+
+  const m1 = normalizeMessage(raw1);
+  const m2 = normalizeMessage(raw2);
+  const m3 = normalizeMessage(raw3);
+
+  const anyCustom = Boolean(m1.length || m2.length || m3.length);
+  if (!anyCustom) return null;
+
+  const fallback = m1 || m2 || m3;
+  return [m1 || fallback, m2 || fallback, m3 || fallback];
 }
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -300,9 +316,8 @@ io.on('connection', (socket) => {
     if (!tenant.ready || tenant.isSending || !tenant.client) return;
 
     const rawNumbers = data?.numbers || '';
-    const rawMessage = data?.message || '';
     const targetNumbers = rawNumbers.trim().length ? parseNumbers(rawNumbers) : numbers;
-    const customMessage = normalizeMessage(rawMessage);
+    const customMessages = buildCustomMessages(data);
 
     if (!targetNumbers.length) {
       logToUi(tenant, '⚠️ Nenhum número encontrado.');
@@ -314,15 +329,16 @@ io.on('connection', (socket) => {
     logToUi(tenant, '🚀 Iniciando envio...');
     sendUpdate(tenant);
 
-    for (const number of targetNumbers) {
+    for (let idx = 0; idx < targetNumbers.length; idx++) {
       if (!tenant.isSending) break;
+      const number = targetNumbers[idx];
       const cleanNumber = formatNumber(number);
       if (!cleanNumber) continue;
       
       const chatId = `${cleanNumber}@c.us`;
       try {
-        const style = getMessageStyle(tenant.sentCount + 1);
-        const messageText = customMessage.length ? customMessage : createMessage(style).text;
+        const style = getMessageStyleByContactIndex(idx);
+        const messageText = customMessages ? customMessages[style - 1] : createMessage(style).text;
         
         const isRegistered = await tenant.client.isRegisteredUser(chatId);
         if (!isRegistered) {
