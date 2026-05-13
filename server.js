@@ -39,16 +39,16 @@ function parseEnvInt(name, fallback) {
 }
 
 const SEND_LIMITS = {
-  maxPerRun: parseEnvInt('BOT_MAX_PER_RUN', 10),
-  maxPerHour: parseEnvInt('BOT_MAX_PER_HOUR', 20),
-  maxPerDay: parseEnvInt('BOT_MAX_PER_DAY', 50),
+  maxPerRun: parseEnvInt('BOT_MAX_PER_RUN', 0),
+  maxPerHour: parseEnvInt('BOT_MAX_PER_HOUR', 0),
+  maxPerDay: parseEnvInt('BOT_MAX_PER_DAY', 0),
 };
 
 const SEND_THROTTLE = {
   perContactDelayMs: parseEnvInt('BOT_DELAY_MS', 60000),
   perContactJitterMs: parseEnvInt('BOT_DELAY_JITTER_MS', 5000),
-  breakEvery: parseEnvInt('BOT_BREAK_EVERY', 50),
-  breakDelayMs: parseEnvInt('BOT_BREAK_MS', 90 * 60 * 1000),
+  breakEvery: parseEnvInt('BOT_BREAK_EVERY', 0),
+  breakDelayMs: parseEnvInt('BOT_BREAK_MS', 0),
 };
 
 function pruneTimestamps(timestamps, cutoffMs) {
@@ -102,10 +102,14 @@ function tokenToId(token) {
 const allowedTokens = parseAllowedTokens();
 const allowedTokenSet = new Set(allowedTokens);
 if (allowedTokens.length === 1) {
-  console.log(`🔐 Chave de acesso da interface: ${allowedTokens[0]}`);
+  console.log(`Chave de acesso da interface: ${allowedTokens[0]}`);
+  console.log(`ACCESS_TOKEN=${allowedTokens[0]}`);
 } else {
-  console.log(`🔐 Chaves de acesso carregadas: ${allowedTokens.length}`);
-  allowedTokens.forEach((t, idx) => console.log(`🔐 Chave ${idx + 1}: ${t}`));
+  console.log(`Chaves de acesso carregadas: ${allowedTokens.length}`);
+  allowedTokens.forEach((t, idx) => {
+    console.log(`Chave ${idx + 1}: ${t}`);
+    console.log(`ACCESS_TOKEN_${idx + 1}=${t}`);
+  });
 }
 
 io.use((socket, next) => {
@@ -434,9 +438,9 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const maxPerRun = Math.max(1, SEND_LIMITS.maxPerRun || 10);
-    const targetNumbers = parsedNumbers.slice(0, maxPerRun);
-    if (parsedNumbers.length > targetNumbers.length) {
+    const maxPerRun = SEND_LIMITS.maxPerRun > 0 ? SEND_LIMITS.maxPerRun : 0;
+    const targetNumbers = maxPerRun > 0 ? parsedNumbers.slice(0, maxPerRun) : parsedNumbers;
+    if (maxPerRun > 0 && parsedNumbers.length > targetNumbers.length) {
       logToUi(tenant, `🛡️ Proteção ativa: reduzindo disparo para ${targetNumbers.length} contatos (de ${parsedNumbers.length}).`);
       logToUi(tenant, '🛡️ Para envio em larga escala com menor risco, use a API oficial do WhatsApp Business (Meta).');
     }
@@ -550,5 +554,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(port, () => {
-  console.log(`🌐 Servidor em http://localhost:${port}`);
+  console.log(`Servidor em http://localhost:${port}`);
 });
