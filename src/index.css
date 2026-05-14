@@ -166,6 +166,32 @@ body {
   box-shadow: 0 0 0 4px rgba(70, 150, 255, 0.12);
 }
 
+.textarea-small {
+  margin-bottom: 10px;
+}
+
+.bulk-actions {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.bulk-input {
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(2, 6, 14, 0.55);
+  padding: 0 12px;
+}
+
+.bulk-input:focus {
+  border-color: rgba(80, 160, 255, 0.55);
+  box-shadow: 0 0 0 4px rgba(70, 150, 255, 0.12);
+  outline: none;
+}
+
 .btn {
   height: 42px;
   padding: 0 14px;

@@ -21,6 +21,7 @@ const numbers = require('./numbers');
 const createMessage = require('./message');
 
 const app = express();
+app.use(express.json({ limit: '1mb' }));
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -390,6 +391,42 @@ app.get('/status', (req, res) => {
     cooldownUntil: tenant.cooldownUntil,
     nextSendAt: tenant.nextSendAt,
   });
+});
+
+app.post('/admin/disconnect', async (req, res) => {
+  const remote = String(req.socket?.remoteAddress || '');
+  const isLocal = remote === '127.0.0.1' || remote === '::1' || remote.endsWith('127.0.0.1');
+  if (!isLocal) return res.status(403).json({ error: 'forbidden' });
+
+  const authToken = (req.get('x-bot-token') || req.query?.token || req.body?.token || '').toString().trim();
+  const effectiveAuth = authToken.length ? authToken : (allowedTokens.length === 1 ? allowedTokens[0] : '');
+  if (!effectiveAuth.length || !allowedTokenSet.has(effectiveAuth)) return res.status(401).json({ error: 'unauthorized' });
+
+  const requestedTokens = req.body?.tokens;
+  let tokens = [];
+  if (Array.isArray(requestedTokens)) {
+    tokens = requestedTokens.map(t => String(t || '').trim()).filter(Boolean);
+  } else if (typeof requestedTokens === 'string') {
+    tokens = requestedTokens.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean);
+  } else {
+    tokens = allowedTokens.slice();
+  }
+
+  const uniqueTokens = [...new Set(tokens)].filter(t => allowedTokenSet.has(t));
+  const results = [];
+  for (const token of uniqueTokens) {
+    let count = 0;
+    try {
+      const sockets = await io.in(token).fetchSockets();
+      count = sockets.length;
+    } catch (e) { }
+    try {
+      io.in(token).disconnectSockets(true);
+    } catch (e) { }
+    results.push({ tokenId: tokenToId(token), disconnected: count });
+  }
+
+  res.json({ ok: true, results });
 });
 
 app.get('*', (req, res) => {

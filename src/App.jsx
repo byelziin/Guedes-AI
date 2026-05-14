@@ -16,6 +16,8 @@ function App() {
   const [message2, setMessage2] = useState('')
   const [message3, setMessage3] = useState('')
   const [contactInput, setContactInput] = useState('')
+  const [bulkInput, setBulkInput] = useState('')
+  const [chunkSize, setChunkSize] = useState('')
   const [contacts, setContacts] = useState([])
   const [accessToken, setAccessToken] = useState(() => localStorage.getItem('bot_access_token') || '')
   const [serverUrl, setServerUrl] = useState(() => localStorage.getItem('bot_server_url') || import.meta.env.VITE_SOCKET_URL || '')
@@ -78,16 +80,78 @@ function App() {
   }, [logs])
 
   function normalizeContact(value) {
-    return String(value || '').trim()
+    const digits = String(value || '').replace(/\D/g, '')
+    if (!digits) return ''
+    if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) return digits
+    if (digits.length === 10 || digits.length === 11) return digits
+    if (digits.length >= 12 && digits.length <= 13) return digits
+    return digits
+  }
+
+  function splitByFixedSize(rawDigits, size) {
+    const safeSize = Number.parseInt(String(size || ''), 10)
+    if (!Number.isFinite(safeSize) || safeSize <= 0) return []
+    if (rawDigits.length < safeSize) return []
+    if (rawDigits.length % safeSize !== 0) return []
+    const out = []
+    for (let i = 0; i < rawDigits.length; i += safeSize) {
+      out.push(rawDigits.slice(i, i + safeSize))
+    }
+    return out
+  }
+
+  function extractContactsFromText(text, size) {
+    const raw = String(text || '').trim()
+    if (!raw) return []
+
+    const rawDigits = raw.replace(/\D/g, '')
+    const hasSeparators = /[,\s;\n]/.test(raw)
+    if (!hasSeparators && rawDigits.length > 13) {
+      const explicitSplit = splitByFixedSize(rawDigits, size)
+      if (explicitSplit.length) return explicitSplit.map(normalizeContact).filter(Boolean)
+
+      const split13 = splitByFixedSize(rawDigits, 13)
+      if (split13.length) return split13.map(normalizeContact).filter(Boolean)
+
+      const split11 = splitByFixedSize(rawDigits, 11)
+      if (split11.length) return split11.map(normalizeContact).filter(Boolean)
+    }
+
+    const matches = []
+    const re = /(\+?\d[\d().\s-]{8,}\d)/g
+    let m
+    while ((m = re.exec(raw)) !== null) {
+      const normalized = normalizeContact(m[1])
+      if (normalized) matches.push(normalized)
+    }
+    if (matches.length) return matches
+
+    return raw
+      .split(/[\n,;\t ]+/)
+      .map(normalizeContact)
+      .filter(Boolean)
+  }
+
+  function addContactsFromText(text, size) {
+    const nextContacts = extractContactsFromText(text, size)
+    if (!nextContacts.length) return 0
+    let added = 0
+    setContacts(prev => {
+      const set = new Set(prev)
+      for (const c of nextContacts) {
+        if (!set.has(c)) {
+          set.add(c)
+          added++
+        }
+      }
+      return [...set]
+    })
+    return added
   }
 
   function addContact(value) {
-    const normalized = normalizeContact(value)
-    if (!normalized) return
-    setContacts(prev => {
-      if (prev.includes(normalized)) return prev
-      return [...prev, normalized]
-    })
+    const added = addContactsFromText(value)
+    if (added > 0) addLog(`📥 ${added} contato(s) adicionado(s).`)
   }
 
   function removeContact(value) {
@@ -222,6 +286,42 @@ function App() {
               }}
             >
               Adicionar
+            </button>
+          </div>
+
+          <div className="panel-title">Adicionar lista</div>
+          <textarea
+            className="textarea textarea-small"
+            value={bulkInput}
+            onChange={e => setBulkInput(e.target.value)}
+            placeholder={'Cole uma lista (um por linha). Pode ter nome junto.\nEx:\nJoão - (11) 99999-9999\nMaria 11988887777'}
+            rows={4}
+          />
+          <div className="bulk-actions">
+            <input
+              className="input bulk-input"
+              value={chunkSize}
+              onChange={e => setChunkSize(e.target.value)}
+              placeholder="Dividir a cada (opcional)"
+              inputMode="numeric"
+            />
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                const added = addContactsFromText(bulkInput, chunkSize)
+                if (added > 0) addLog(`📥 ${added} contato(s) adicionado(s) da lista.`)
+                setBulkInput('')
+              }}
+              disabled={!bulkInput.trim().length}
+            >
+              Adicionar lista
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setBulkInput('')}
+              disabled={!bulkInput.trim().length}
+            >
+              Limpar
             </button>
           </div>
 
