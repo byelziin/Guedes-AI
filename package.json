@@ -1,7 +1,7 @@
 {
   "name": "bot-cris",
   "version": "1.0.0",
-  "main": "main.js",
+  "main": "server.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

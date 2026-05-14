@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
+import './HomePage.css'
 
-function App() {
+function HomePage() {
   const [botState, setBotState] = useState({
     status: 'Carregando...',
     sentCount: 0,
     ready: false,
     isSending: false,
     cooldownUntil: null,
-    nextSendAt: null
+    nextSendAt: null,
   })
   const [qrSrc, setQrSrc] = useState(null)
   const [logs, setLogs] = useState([])
@@ -53,7 +54,7 @@ function App() {
         ready: data.ready,
         isSending: data.isSending,
         cooldownUntil: data.cooldownUntil ?? null,
-        nextSendAt: data.nextSendAt ?? null
+        nextSendAt: data.nextSendAt ?? null,
       })
     })
 
@@ -182,6 +183,10 @@ function App() {
   }
 
   function handleStart() {
+    if (!message.trim().length) {
+      addLog('❌ Preencha a mensagem para liberar o envio.')
+      return
+    }
     const numbers = contacts.length ? contacts.join('\n') : ''
     socketRef.current?.emit('start', { numbers, message, message2, message3 })
   }
@@ -433,7 +438,7 @@ function App() {
             <button
               className="btn btn-primary btn-wide"
               onClick={handleStart}
-            disabled={!botState.ready || botState.isSending || !contacts.length || hasCooldown}
+            disabled={!botState.ready || botState.isSending || !contacts.length || hasCooldown || !message.trim().length}
             >
               {botState.isSending ? 'Enviando...' : 'Enviar mensagens'}
             </button>
@@ -468,4 +473,4 @@ function App() {
   )
 }
 
-export default App
+export default HomePage

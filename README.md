@@ -47,13 +47,16 @@ Acesse em `http://localhost:3000`
 ```
 ├── src/
 │   ├── main.jsx       # Entry point do React
-│   ├── App.jsx        # Componente principal
-│   ├── index.css      # Estilos globais
-│   └── App.css        # (vazio - estilos estão em index.css)
+│   ├── app/
+│   │   └── App.jsx
+│   ├── pages/
+│   │   └── Home/
+│   │       └── HomePage.jsx
+│   └── styles/
+│       └── index.css
 ├── index.html         # Template HTML
 ├── vite.config.js     # Configuração do Vite
 ├── server.js          # Backend Express/Socket.io
-├── message.js         # Gerador de mensagens
 ├── numbers.js         # Lista de números padrão
 └── package.json
 ```

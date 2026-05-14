@@ -18,7 +18,6 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 
 const numbers = require('./numbers');
-const createMessage = require('./message');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -322,11 +321,8 @@ function buildCustomMessages(data) {
   const m2 = normalizeMessage(raw2);
   const m3 = normalizeMessage(raw3);
 
-  const anyCustom = Boolean(m1.length || m2.length || m3.length);
-  if (!anyCustom) return null;
-
-  const fallback = m1 || m2 || m3;
-  return [m1 || fallback, m2 || fallback, m3 || fallback];
+  if (!m1.length) return null;
+  return [m1, m2 || m1, m3 || m1];
 }
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -521,6 +517,10 @@ io.on('connection', (socket) => {
     const rawNumbers = data?.numbers || '';
     const parsedNumbers = rawNumbers.trim().length ? parseNumbers(rawNumbers) : numbers;
     const customMessages = buildCustomMessages(data);
+    if (!customMessages) {
+      logToUi(tenant, '⚠️ Mensagem obrigatória. Preencha a mensagem no site para liberar o envio.');
+      return;
+    }
 
     if (!parsedNumbers.length) {
       logToUi(tenant, '⚠️ Nenhum número encontrado.');
@@ -551,7 +551,7 @@ io.on('connection', (socket) => {
       const chatId = `${cleanNumber}@c.us`;
       try {
         const style = getMessageStyleByContactIndex(idx);
-        const messageText = customMessages ? customMessages[style - 1] : createMessage(style).text;
+        const messageText = customMessages[style - 1];
         
         const isRegistered = await tenant.client.isRegisteredUser(chatId);
         if (!isRegistered) {
