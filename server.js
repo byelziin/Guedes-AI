@@ -38,6 +38,14 @@ function parseEnvInt(name, fallback) {
   return n;
 }
 
+function parseEnvBool(name, fallback) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase();
+  if (!raw.length) return fallback;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
 const SEND_LIMITS = {
   maxPerRun: parseEnvInt('BOT_MAX_PER_RUN', 0),
   maxPerHour: parseEnvInt('BOT_MAX_PER_HOUR', 0),
@@ -82,6 +90,35 @@ function checkSendLimits(tenant) {
   return { ok: true };
 }
 
+function upsertEnvVar(filePath, key, value) {
+  const lineValue = `${key}=${value}`;
+  let contents = '';
+  try {
+    if (fs.existsSync(filePath)) contents = fs.readFileSync(filePath, 'utf8');
+  } catch (e) { }
+
+  const lines = contents.length ? contents.split(/\r?\n/) : [];
+  const matcher = new RegExp(`^\\s*${key}\\s*=`);
+  let replaced = false;
+  const updated = lines.map((line) => {
+    if (matcher.test(line)) {
+      replaced = true;
+      return lineValue;
+    }
+    return line;
+  });
+
+  if (!replaced) updated.push(lineValue);
+  const finalText = updated.filter(Boolean).join('\n') + '\n';
+
+  try {
+    fs.writeFileSync(filePath, finalText, 'utf8');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function parseAllowedTokens() {
   const rawList = process.env.BOT_ACCESS_TOKENS || '';
   const rawSingle = process.env.BOT_ACCESS_TOKEN || '';
@@ -92,7 +129,22 @@ function parseAllowedTokens() {
 
   const unique = [...new Set(tokens)];
   if (unique.length) return unique;
-  return [crypto.randomBytes(16).toString('hex')];
+
+  const count = Math.max(1, parseEnvInt('BOT_ACCESS_TOKEN_COUNT', 4));
+  const generated = Array.from({ length: count }, () => crypto.randomBytes(16).toString('hex'));
+  const persist = parseEnvBool('BOT_PERSIST_TOKENS', true);
+  if (persist) {
+    const joined = generated.join(',');
+    const saved = upsertEnvVar(envPath, 'BOT_ACCESS_TOKENS', joined);
+    if (saved) {
+      process.env.BOT_ACCESS_TOKENS = joined;
+      console.log('Chaves de acesso geradas e salvas no .env');
+    } else {
+      console.log('Chaves de acesso geradas, mas não foi possível salvar no .env');
+    }
+  }
+
+  return generated;
 }
 
 function tokenToId(token) {

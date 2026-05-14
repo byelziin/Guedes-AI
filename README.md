@@ -68,6 +68,17 @@ Acesse em `http://localhost:3000`
 - ✅ Logs em tempo real
 - ✅ Controle de campanha (iniciar/parar)
 
+## Chaves de acesso
+
+O servidor usa uma chave (token) para separar clientes/sessões. Você pode:
+
+- Definir manualmente:
+  - `BOT_ACCESS_TOKEN=...` (uma chave)
+  - `BOT_ACCESS_TOKENS=chave1,chave2,...` (várias chaves)
+- Ou deixar o servidor gerar automaticamente (e salvar no `.env`):
+  - `BOT_ACCESS_TOKEN_COUNT=4`
+  - `BOT_PERSIST_TOKENS=true`
+
 ## Scripts
 
 - `npm run dev` - Inicia Vite dev server
