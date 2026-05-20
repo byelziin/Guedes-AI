@@ -14,10 +14,15 @@ if (!fs.existsSync(envPath) && fs.existsSync(envExamplePath)) {
 }
 dotenv.config({ path: envPath });
 const { Server } = require('socket.io');
-const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 
 const numbers = require('./numbers');
+
+const EVOLUTION_API_URL = String(process.env.EVOLUTION_API_URL || 'http://localhost:8080').replace(/\/+$/, '');
+const EVOLUTION_API_KEY = String(process.env.EVOLUTION_API_KEY || process.env.API_KEY || '').trim();
+const CHATWOOT_URL = String(process.env.CHATWOOT_URL || 'https://app.chatwoot.com').replace(/\/+$/, '');
+const CHATWOOT_ACCOUNT_ID = String(process.env.CHATWOOT_ACCOUNT_ID || '').trim();
+const CHATWOOT_TOKEN = String(process.env.CHATWOOT_API_TOKEN || process.env.CHATWOOT_TOKEN || '').trim();
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -187,8 +192,7 @@ function getTenant(token) {
   const tenant = {
     token: safeToken,
     id,
-    clientId: `web-interface-${id}`,
-    client: null,
+    instanceName: `tenant-${id}`,
     initializing: false,
     ready: false,
     isSending: false,
@@ -197,6 +201,9 @@ function getTenant(token) {
     cooldownUntil: null,
     nextSendAt: null,
     statusMessage: 'Aguardando autenticação...',
+    statePoller: null,
+    qrPoller: null,
+    qrAttempts: 0,
   };
   tenants.set(safeToken, tenant);
   return tenant;
@@ -218,49 +225,130 @@ function sendUpdate(tenant) {
   });
 }
 
-function createClient(tenant) {
-  const newClient = new Client({
-    authStrategy: new LocalAuth({ clientId: tenant.clientId }),
-    puppeteer: {
-      headless: false,
-      executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-extensions'],
-    },
-  });
-
-  newClient.on('qr', async (qr) => {
-    try {
-      const url = await qrcode.toDataURL(qr);
-      tenant.statusMessage = 'Aguardando escaneamento do QR code...';
-      logToUi(tenant, '📲 Novo QR code gerado. Escaneie pelo WhatsApp.');
-      io.to(tenant.token).emit('qr', url);
-      sendUpdate(tenant);
-    } catch (err) {
-      logToUi(tenant, '❌ Erro ao gerar QR code: ' + err.message);
+async function evolutionRequest(method, pathname, body) {
+  if (!EVOLUTION_API_KEY) throw new Error('Evolution API key não configurada (EVOLUTION_API_KEY).');
+  const url = `${EVOLUTION_API_URL}${pathname}`;
+  const headers = { apikey: EVOLUTION_API_KEY };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const options = { method, headers, signal: controller.signal };
+  if (body !== undefined) {
+    headers['content-type'] = 'application/json';
+    options.body = JSON.stringify(body);
+  }
+  try {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    const payload = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
+    if (!res.ok) {
+      const message = (() => {
+        if (typeof payload === 'string') return payload;
+        const responseMessage = payload?.response?.message;
+        if (Array.isArray(responseMessage) && responseMessage.length) return String(responseMessage[0]);
+        if (typeof responseMessage === 'string' && responseMessage.length) return responseMessage;
+        if (typeof payload?.message === 'string' && payload.message.length) return payload.message;
+        if (typeof payload?.error === 'string' && payload.error.length) return payload.error;
+        return `HTTP ${res.status}`;
+      })();
+      const err = new Error(message);
+      err.status = res.status;
+      throw err;
     }
-  });
+    return payload;
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      const err = new Error('Timeout ao chamar Evolution API.');
+      err.status = 408;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
-  newClient.on('ready', () => {
-    tenant.statusMessage = 'Bot conectado e pronto.';
-    tenant.ready = true;
-    logToUi(tenant, '🚀 Bot pronto');
-    sendUpdate(tenant);
-  });
+async function ensureEvolutionInstance(tenant) {
+  const body = {
+    instanceName: tenant.instanceName,
+    integration: 'WHATSAPP-BAILEYS',
+    qrcode: true,
+  };
 
-  newClient.on('auth_failure', (msg) => {
-    tenant.statusMessage = 'Falha na autenticação';
-    logToUi(tenant, `❌ Falha na autenticação: ${msg}`);
-    sendUpdate(tenant);
-  });
+  try {
+    const payload = await evolutionRequest('POST', '/instance/create', body);
+    const qr =
+      payload?.qrcode?.base64 ||
+      payload?.qrcode?.code ||
+      payload?.base64 ||
+      payload?.code ||
+      payload?.result?.qrcode?.base64 ||
+      payload?.result?.qrcode?.code ||
+      payload?.result?.base64 ||
+      payload?.result?.code ||
+      null;
+    return qr;
+  } catch (err) {
+    const msg = String(err?.message || '');
+    if (err?.status === 409) return;
+    if (err?.status === 403 && msg.includes('already in use')) return;
+    throw err;
+  }
+}
 
-  newClient.on('disconnected', (reason) => {
-    tenant.statusMessage = 'Cliente desconectado';
-    tenant.ready = false;
-    logToUi(tenant, `⚠️ Cliente desconectado: ${reason}`);
-    sendUpdate(tenant);
-  });
+async function configureChatwoot(tenant) {
+  if (!CHATWOOT_URL || !CHATWOOT_ACCOUNT_ID || !CHATWOOT_TOKEN) return;
+  const body = {
+    enabled: true,
+    accountId: CHATWOOT_ACCOUNT_ID,
+    token: CHATWOOT_TOKEN,
+    url: CHATWOOT_URL,
+    signMsg: true,
+    reopenConversation: true,
+    conversationPending: false,
+    nameInbox: tenant.instanceName,
+    mergeBrazilContacts: true,
+    importContacts: true,
+    importMessages: true,
+    daysLimitImportMessages: 3,
+    autoCreate: true,
+    organization: 'Guedes AI',
+  };
+  await evolutionRequest('POST', `/chatwoot/set/${encodeURIComponent(tenant.instanceName)}`, body);
+}
 
-  return newClient;
+async function fetchEvolutionQr(tenant) {
+  const payload = await evolutionRequest('GET', `/instance/connect/${encodeURIComponent(tenant.instanceName)}`);
+  const base64 = (() => {
+    const direct = payload?.base64 || payload?.qrcode?.base64 || payload?.result?.base64 || payload?.result?.qrcode?.base64;
+    return typeof direct === 'string' ? direct : '';
+  })();
+  if (base64.length) {
+    if (base64.startsWith('data:image')) return base64;
+    return `data:image/png;base64,${base64}`;
+  }
+  const code = (() => {
+    const direct = payload?.code || payload?.qrcode?.code || payload?.result?.code || payload?.result?.qrcode?.code;
+    return typeof direct === 'string' ? direct : '';
+  })();
+  if (!code.length) return null;
+  return await qrcode.toDataURL(code);
+}
+
+async function getEvolutionConnectionState(tenant) {
+  const payload = await evolutionRequest('GET', `/instance/connectionState/${encodeURIComponent(tenant.instanceName)}`);
+  const state = payload?.instance?.state || payload?.state || '';
+  return String(state);
+}
+
+function stopTenantPoller(tenant) {
+  if (tenant.statePoller) clearInterval(tenant.statePoller);
+  tenant.statePoller = null;
+}
+
+function stopTenantQrPoller(tenant) {
+  if (tenant.qrPoller) clearInterval(tenant.qrPoller);
+  tenant.qrPoller = null;
+  tenant.qrAttempts = 0;
 }
 
 async function initializeClient(tenant) {
@@ -273,17 +361,92 @@ async function initializeClient(tenant) {
     return;
   }
 
+  if (!EVOLUTION_API_KEY) {
+    logToUi(tenant, '❌ Evolution API não configurada. Defina EVOLUTION_API_KEY no .env.');
+    tenant.statusMessage = 'Evolution API não configurada.';
+    sendUpdate(tenant);
+    return;
+  }
+
   tenant.initializing = true;
-  tenant.statusMessage = 'Inicializando WhatsApp...';
+  tenant.statusMessage = 'Inicializando Evolution API...';
   sendUpdate(tenant);
-  logToUi(tenant, '🔌 Inicializando cliente WhatsApp...');
+  logToUi(tenant, '🔌 Inicializando instância na Evolution API...');
 
   try {
-    tenant.client = createClient(tenant);
-    await tenant.client.initialize();
+    const createdQr = await ensureEvolutionInstance(tenant);
+    if (CHATWOOT_URL && CHATWOOT_ACCOUNT_ID && CHATWOOT_TOKEN) {
+      try {
+        await configureChatwoot(tenant);
+        logToUi(tenant, '✅ Chatwoot configurado.');
+      } catch (e) {
+        logToUi(tenant, `❌ Erro ao configurar Chatwoot: ${e.message}`);
+        tenant.statusMessage = 'Falha ao configurar Chatwoot.';
+        sendUpdate(tenant);
+        return;
+      }
+    }
+    let qr = null;
+    if (createdQr) {
+      if (String(createdQr).startsWith('data:image')) qr = createdQr;
+      else if (String(createdQr).length > 50) qr = `data:image/png;base64,${createdQr}`;
+      else qr = await qrcode.toDataURL(String(createdQr));
+    } else {
+      qr = await fetchEvolutionQr(tenant);
+    }
+    if (qr) {
+      tenant.statusMessage = 'Aguardando escaneamento do QR code...';
+      io.to(tenant.token).emit('qr', qr);
+      sendUpdate(tenant);
+      logToUi(tenant, '📲 QR code gerado. Escaneie pelo WhatsApp.');
+    } else {
+      tenant.statusMessage = 'Aguardando QR code...';
+      sendUpdate(tenant);
+      logToUi(tenant, '⚠️ Evolution não retornou QR code (instância pode estar conectando).');
+    }
+
+    stopTenantPoller(tenant);
+    stopTenantQrPoller(tenant);
+    tenant.statePoller = setInterval(async () => {
+      try {
+        const state = await getEvolutionConnectionState(tenant);
+        if (state === 'open') {
+          stopTenantPoller(tenant);
+          stopTenantQrPoller(tenant);
+          tenant.ready = true;
+          tenant.statusMessage = 'Bot conectado e pronto.';
+          io.to(tenant.token).emit('qr', null);
+          sendUpdate(tenant);
+          logToUi(tenant, '🚀 Bot pronto');
+        }
+      } catch (e) { }
+    }, 2500);
+
+    if (!qr) {
+      tenant.qrPoller = setInterval(async () => {
+        if (tenant.ready) {
+          stopTenantQrPoller(tenant);
+          return;
+        }
+        tenant.qrAttempts += 1;
+        if (tenant.qrAttempts > 40) {
+          stopTenantQrPoller(tenant);
+          logToUi(tenant, '⚠️ QR code não apareceu. Tente clicar em "Autenticar WhatsApp" novamente.');
+          return;
+        }
+        try {
+          const nextQr = await fetchEvolutionQr(tenant);
+          if (!nextQr) return;
+          stopTenantQrPoller(tenant);
+          tenant.statusMessage = 'Aguardando escaneamento do QR code...';
+          io.to(tenant.token).emit('qr', nextQr);
+          sendUpdate(tenant);
+          logToUi(tenant, '📲 QR code gerado. Escaneie pelo WhatsApp.');
+        } catch (e) { }
+      }, 2000);
+    }
   } catch (err) {
-    logToUi(tenant, `❌ Erro ao inicializar: ${err.message}`);
-    tenant.client = null;
+    logToUi(tenant, `❌ Erro ao inicializar Evolution: ${err.message}`);
   } finally {
     tenant.initializing = false;
   }
@@ -326,45 +489,34 @@ function buildCustomMessages(data) {
 }
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const randomDelay = () => Math.floor(Math.random() * 8000) + 15000;
 
-function isFatalAutomationError(err) {
+function isFatalEvolutionError(err) {
+  const status = Number(err?.status || 0);
+  if (status === 401 || status === 403 || status === 404) return true;
   const message = String(err?.message || err || '');
   return (
-    message.includes('Attempted to use detached Frame') ||
-    message.includes('Execution context was destroyed') ||
-    message.includes('Target closed') ||
-    message.includes('Session closed') ||
-    message.includes('Protocol error') ||
-    message.includes('Navigation failed') ||
-    message.includes('Cannot find context')
+    message.includes('fetch failed') ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('ENOTFOUND') ||
+    message.includes('ETIMEDOUT')
   );
 }
 
-async function teardownClient(tenant) {
-  if (!tenant.client) return;
-  try {
-    await tenant.client.destroy();
-  } catch (e) { }
-  tenant.client = null;
+async function sendEvolutionText(tenant, number, text) {
+  await evolutionRequest('POST', `/message/sendText/${encodeURIComponent(tenant.instanceName)}`, { number, text });
+  return true;
 }
 
-async function safeSend(client, chatId, text) {
+async function logoutEvolutionInstance(tenant) {
   try {
-    return await client.sendMessage(chatId, text);
-  } catch (err) {
-    if (isFatalAutomationError(err)) throw err;
-    const message = String(err?.message || err || '');
-    if (message.includes('No LID for user')) {
-      try {
-        const numberId = await client.getNumberId(chatId);
-        if (!numberId) return false;
-        await delay(2000);
-        return await client.sendMessage(numberId._serialized, text);
-      } catch (e) { return false; }
-    }
-    return false;
-  }
+    await evolutionRequest('DELETE', `/instance/logout/${encodeURIComponent(tenant.instanceName)}`);
+  } catch (e) { }
+}
+
+async function deleteEvolutionInstance(tenant) {
+  try {
+    await evolutionRequest('DELETE', `/instance/delete/${encodeURIComponent(tenant.instanceName)}`);
+  } catch (e) { }
 }
 
 app.use(express.static('dist'));
@@ -453,38 +605,30 @@ io.on('connection', (socket) => {
 
   socket.on('disconnectWhatsApp', async () => {
     logToUi(tenant, '🔌 Desconectando WhatsApp...');
-    if (tenant.client) {
-      try {
-        await tenant.client.destroy();
-        tenant.client = null;
-        tenant.ready = false;
-        tenant.statusMessage = 'WhatsApp desconectado.';
-        logToUi(tenant, '✅ Desconectado com sucesso.');
-        io.to(tenant.token).emit('qr', null);
-        sendUpdate(tenant);
-      } catch (err) {
-        logToUi(tenant, `❌ Erro ao desconectar: ${err.message}`);
-      }
+    try {
+      stopTenantPoller(tenant);
+      stopTenantQrPoller(tenant);
+      await logoutEvolutionInstance(tenant);
+      tenant.ready = false;
+      tenant.statusMessage = 'WhatsApp desconectado.';
+      logToUi(tenant, '✅ Desconectado com sucesso.');
+      io.to(tenant.token).emit('qr', null);
+      sendUpdate(tenant);
+    } catch (err) {
+      logToUi(tenant, `❌ Erro ao desconectar: ${err.message}`);
     }
   });
 
   socket.on('resetSession', async () => {
     logToUi(tenant, '♻️ Solicitando reset total de sessão...');
     try {
-      if (tenant.client) {
-        await tenant.client.destroy();
-        tenant.client = null;
-      }
+      stopTenantPoller(tenant);
+      stopTenantQrPoller(tenant);
+      await logoutEvolutionInstance(tenant);
+      await deleteEvolutionInstance(tenant);
       tenant.ready = false;
       tenant.initializing = false;
       tenant.statusMessage = 'Sessão removida. Aguardando nova autenticação...';
-      
-      const authPath = path.join(__dirname, '.wwebjs_auth', `session-${tenant.clientId}`);
-      if (fs.existsSync(authPath)) {
-        logToUi(tenant, '📂 Removendo arquivos de sessão...');
-        await fs.promises.rm(authPath, { recursive: true, force: true });
-        logToUi(tenant, '✅ Arquivos removidos.');
-      }
       
       io.to(tenant.token).emit('qr', null);
       sendUpdate(tenant);
@@ -494,7 +638,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('start', async (data) => {
-    if (!tenant.ready || tenant.isSending || !tenant.client) return;
+    if (!tenant.ready || tenant.isSending || !tenant.instanceName) return;
 
     const now = Date.now();
     if (tenant.cooldownUntil && tenant.cooldownUntil > now) {
@@ -548,33 +692,27 @@ io.on('connection', (socket) => {
       const cleanNumber = formatNumber(number);
       if (!cleanNumber) continue;
       
-      const chatId = `${cleanNumber}@c.us`;
       try {
         const style = getMessageStyleByContactIndex(idx);
         const messageText = customMessages[style - 1];
-        
-        const isRegistered = await tenant.client.isRegisteredUser(chatId);
-        if (!isRegistered) {
-          logToUi(tenant, `⚠️ Não registrado: ${cleanNumber}`);
-        } else {
-          const limitCheck = checkSendLimits(tenant);
-          if (!limitCheck.ok) {
-            const waitMs = Math.max(0, limitCheck.waitMs || 0);
-            tenant.cooldownUntil = Date.now() + waitMs;
-            tenant.statusMessage = `Proteção ativa: ${limitCheck.reason}`;
-            sendUpdate(tenant);
-            logToUi(tenant, `🛑 Envio pausado por proteção: ${limitCheck.reason}`);
-            break;
-          }
 
-          await delay(3000);
-          const ok = await safeSend(tenant.client, chatId, messageText);
-          if (ok) {
-            tenant.sentCount++;
-            tenant.sendTimestamps.push(Date.now());
-            logToUi(tenant, `✅ Enviado para ${cleanNumber} (${tenant.sentCount}/${targetNumbers.length})`);
-            sendUpdate(tenant);
-          }
+        const limitCheck = checkSendLimits(tenant);
+        if (!limitCheck.ok) {
+          const waitMs = Math.max(0, limitCheck.waitMs || 0);
+          tenant.cooldownUntil = Date.now() + waitMs;
+          tenant.statusMessage = `Proteção ativa: ${limitCheck.reason}`;
+          sendUpdate(tenant);
+          logToUi(tenant, `🛑 Envio pausado por proteção: ${limitCheck.reason}`);
+          break;
+        }
+
+        await delay(3000);
+        const ok = await sendEvolutionText(tenant, cleanNumber, messageText);
+        if (ok) {
+          tenant.sentCount++;
+          tenant.sendTimestamps.push(Date.now());
+          logToUi(tenant, `✅ Enviado para ${cleanNumber} (${tenant.sentCount}/${targetNumbers.length})`);
+          sendUpdate(tenant);
         }
 
         const isLast = idx === targetNumbers.length - 1;
@@ -605,7 +743,7 @@ io.on('connection', (socket) => {
         sendUpdate(tenant);
         await delay(perDelayMs);
       } catch (err) {
-        if (isFatalAutomationError(err)) {
+        if (isFatalEvolutionError(err)) {
           fatalError = err;
           break;
         }
@@ -620,9 +758,8 @@ io.on('connection', (socket) => {
     tenant.nextSendAt = null;
     if (fatalError) {
       tenant.ready = false;
-      tenant.statusMessage = 'WhatsApp perdeu a sessão do navegador. Autentique novamente.';
+      tenant.statusMessage = 'Evolution perdeu a conexão. Autentique novamente.';
       logToUi(tenant, `🛑 Envio interrompido: ${fatalError.message}`);
-      await teardownClient(tenant);
       io.to(tenant.token).emit('qr', null);
       sendUpdate(tenant);
       return;
