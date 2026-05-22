@@ -501,14 +501,27 @@ async function initializeClient(tenant) {
       try {
         const state = await getEvolutionConnectionState(tenant);
         if (state === 'open') {
-          stopTenantPoller(tenant);
-          stopTenantQrPoller(tenant);
-          tenant.ready = true;
-          tenant.statusMessage = 'Bot conectado e pronto.';
+          if (!tenant.ready) {
+            stopTenantQrPoller(tenant);
+            tenant.ready = true;
+            tenant.statusMessage = 'Bot conectado e pronto.';
+            io.to(tenant.token).emit('qr', null);
+            sendUpdate(tenant);
+            logToUi(tenant, '🚀 Bot pronto');
+            scheduleChatwootSetup(tenant, 0);
+          }
+          return;
+        }
+
+        if (tenant.ready) {
+          tenant.ready = false;
+          tenant.statusMessage = 'WhatsApp desconectado. Gerando novo QR...';
           io.to(tenant.token).emit('qr', null);
           sendUpdate(tenant);
-          logToUi(tenant, '🚀 Bot pronto');
-          scheduleChatwootSetup(tenant, 0);
+          logToUi(tenant, '⚠️ WhatsApp desconectou. Gerando novo QR...');
+          stopTenantQrPoller(tenant);
+          stopTenantPoller(tenant);
+          setTimeout(() => initializeClient(tenant), 500);
         }
       } catch (e) { }
     }, 2500);
@@ -625,9 +638,20 @@ async function logoutEvolutionInstance(tenant) {
 }
 
 async function deleteEvolutionInstance(tenant) {
-  try {
-    await evolutionRequest('DELETE', `/instance/delete/${encodeURIComponent(tenant.instanceName)}`);
-  } catch (e) { }
+  const pathname = `/instance/delete/${encodeURIComponent(tenant.instanceName)}`;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await evolutionRequest('DELETE', pathname);
+      return true;
+    } catch (e) {
+      const status = Number(e?.status || 0);
+      const msg = String(e?.message || '');
+      if (status === 404 || /not found/i.test(msg)) return false;
+      if (attempt >= 4) return false;
+      await delay(800 * (attempt + 1));
+    }
+  }
+  return false;
 }
 
 app.use(express.static('dist'));
@@ -721,11 +745,17 @@ io.on('connection', (socket) => {
       stopTenantQrPoller(tenant);
       stopTenantChatwoot(tenant);
       await logoutEvolutionInstance(tenant);
+      await delay(800);
+      await deleteEvolutionInstance(tenant);
+      tenant.instanceApiKey = null;
+      tenant.chatwootConfigured = false;
+      tenant.chatwootAttempts = 0;
       tenant.ready = false;
-      tenant.statusMessage = 'WhatsApp desconectado.';
+      tenant.statusMessage = 'WhatsApp desconectado. Gerando novo QR...';
       logToUi(tenant, '✅ Desconectado com sucesso.');
       io.to(tenant.token).emit('qr', null);
       sendUpdate(tenant);
+      setTimeout(() => initializeClient(tenant), 500);
     } catch (err) {
       logToUi(tenant, `❌ Erro ao desconectar: ${err.message}`);
     }
@@ -741,10 +771,11 @@ io.on('connection', (socket) => {
       await deleteEvolutionInstance(tenant);
       tenant.ready = false;
       tenant.initializing = false;
-      tenant.statusMessage = 'Sessão removida. Aguardando nova autenticação...';
+      tenant.statusMessage = 'Sessão removida. Gerando novo QR...';
       
       io.to(tenant.token).emit('qr', null);
       sendUpdate(tenant);
+      setTimeout(() => initializeClient(tenant), 500);
     } catch (err) {
       logToUi(tenant, `❌ Erro no reset: ${err.message}`);
     }
