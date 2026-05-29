@@ -4,6 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const dotenv = require('dotenv');
+const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
+const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
+const cookie = require('cookie');
+const signature = require('cookie-signature');
 
 const envPath = path.join(__dirname, '.env');
 const envExamplePath = path.join(__dirname, '.env.example');
@@ -50,6 +56,21 @@ function parseEnvBool(name, fallback) {
   if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
   if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
   return fallback;
+}
+
+const AUTH_ALLOWED_DOMAIN = String(process.env.AUTH_ALLOWED_DOMAIN || 'bfrcapital.com.br')
+  .trim()
+  .toLowerCase()
+  .replace(/^@+/, '');
+
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isAllowedEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  return normalized.endsWith(`@${AUTH_ALLOWED_DOMAIN}`);
 }
 
 const SEND_LIMITS = {
@@ -170,14 +191,96 @@ if (allowedTokens.length === 1) {
   });
 }
 
-io.use((socket, next) => {
+const databaseUrl = String(process.env.DATABASE_URL || '').trim();
+const sessionSecret = String(process.env.SESSION_SECRET || '').trim();
+const authEnabled = Boolean(databaseUrl && sessionSecret);
+let pgPool = null;
+let sessionStore = null;
+const sessionCookieName = 'connect.sid';
+
+async function ensureAuthSchema(pool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+}
+
+if (authEnabled) {
+  pgPool = new Pool({ connectionString: databaseUrl });
+  sessionStore = new PgSession({
+    pool: pgPool,
+    tableName: 'user_sessions',
+    createTableIfMissing: true,
+  });
+  app.use(
+    session({
+      store: sessionStore,
+      secret: sessionSecret,
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: String(process.env.NODE_ENV || '').trim() === 'production',
+        maxAge: 1000 * 60 * 60 * 24 * 7,
+      },
+    }),
+  );
+  ensureAuthSchema(pgPool).catch((err) => {
+    console.error('Auth schema init failed:', err?.message || err);
+  });
+}
+
+function readSessionFromStore(store, sid) {
+  return new Promise((resolve, reject) => {
+    store.get(sid, (err, sess) => {
+      if (err) return reject(err);
+      resolve(sess);
+    });
+  });
+}
+
+io.use(async (socket, next) => {
   const token = socket.handshake?.auth?.token;
   const safeToken = String(token || '').trim();
   if (safeToken && allowedTokenSet.has(safeToken)) {
-    socket.data.token = safeToken;
+    socket.data.tenantKey = safeToken;
     return next();
   }
-  next(new Error('unauthorized'));
+
+  if (!authEnabled || !pgPool || !sessionStore) return next(new Error('unauthorized'));
+
+  try {
+    const cookieHeader = String(socket.request?.headers?.cookie || '');
+    const cookies = cookie.parse(cookieHeader);
+    const rawSidCookie = String(cookies[sessionCookieName] || '').trim();
+    if (!rawSidCookie) return next(new Error('unauthorized'));
+
+    let sid = rawSidCookie;
+    if (sid.startsWith('s:')) sid = sid.slice(2);
+    const unsigned = signature.unsign(sid, sessionSecret);
+    if (!unsigned) return next(new Error('unauthorized'));
+
+    const sess = await readSessionFromStore(sessionStore, unsigned);
+    const userId = sess?.userId;
+    if (!userId) return next(new Error('unauthorized'));
+
+    const result = await pgPool.query('SELECT id, email FROM users WHERE id = $1', [userId]);
+    const user = result.rows[0];
+    if (!user) return next(new Error('unauthorized'));
+    if (!isAllowedEmail(user.email)) return next(new Error('unauthorized'));
+
+    socket.data.userId = user.id;
+    socket.data.userEmail = user.email;
+    socket.data.tenantKey = `user:${user.id}`;
+    next();
+  } catch (e) {
+    next(new Error('unauthorized'));
+  }
 });
 
 const tenants = new Map();
@@ -185,7 +288,6 @@ const tenants = new Map();
 function getTenant(token) {
   const safeToken = String(token || '').trim();
   if (!safeToken) return null;
-  if (!allowedTokenSet.has(safeToken)) return null;
   const existing = tenants.get(safeToken);
   if (existing) return existing;
 
@@ -214,6 +316,13 @@ function getTenant(token) {
   };
   tenants.set(safeToken, tenant);
   return tenant;
+}
+
+function getTenantFromBotToken(token) {
+  const safeToken = String(token || '').trim();
+  if (!safeToken) return null;
+  if (!allowedTokenSet.has(safeToken)) return null;
+  return getTenant(safeToken);
 }
 
 function logToUi(tenant, message) {
@@ -654,6 +763,86 @@ async function deleteEvolutionInstance(tenant) {
   return false;
 }
 
+function requireAuthEnabled(req, res, next) {
+  if (!authEnabled || !pgPool) return res.status(503).json({ error: 'auth_not_configured' });
+  next();
+}
+
+app.get('/api/auth/me', requireAuthEnabled, async (req, res) => {
+  const userId = req.session?.userId;
+  if (!userId) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const result = await pgPool.query('SELECT id, email, created_at FROM users WHERE id = $1', [userId]);
+    const user = result.rows[0];
+    if (!user) {
+      try {
+        req.session.destroy(() => { });
+      } catch (e) { }
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    if (!isAllowedEmail(user.email)) return res.status(403).json({ error: 'forbidden' });
+    res.json({ user });
+  } catch (e) {
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.post('/api/auth/register', requireAuthEnabled, async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password || '');
+  if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
+  if (!isAllowedEmail(email)) return res.status(403).json({ error: 'forbidden_domain' });
+  if (password.length < 8) return res.status(400).json({ error: 'weak_password' });
+
+  try {
+    const passwordHash = await bcrypt.hash(password, 12);
+    const result = await pgPool.query(
+      'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
+      [email, passwordHash],
+    );
+    const user = result.rows[0];
+    req.session.userId = user.id;
+    res.json({ user });
+  } catch (e) {
+    const message = String(e?.message || '');
+    if (message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('unique')) {
+      return res.status(409).json({ error: 'email_in_use' });
+    }
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.post('/api/auth/login', requireAuthEnabled, async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password || '');
+  if (!email || !password) return res.status(400).json({ error: 'missing_fields' });
+  if (!isAllowedEmail(email)) return res.status(403).json({ error: 'forbidden_domain' });
+
+  try {
+    const result = await pgPool.query('SELECT id, email, password_hash, created_at FROM users WHERE email = $1', [
+      email,
+    ]);
+    const user = result.rows[0];
+    if (!user) return res.status(401).json({ error: 'invalid_credentials' });
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ error: 'invalid_credentials' });
+    req.session.userId = user.id;
+    res.json({ user: { id: user.id, email: user.email, created_at: user.created_at } });
+  } catch (e) {
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.post('/api/auth/logout', requireAuthEnabled, async (req, res) => {
+  try {
+    req.session.destroy(() => {
+      res.json({ ok: true });
+    });
+  } catch (e) {
+    res.json({ ok: true });
+  }
+});
+
 app.use(express.static('dist'));
 app.use(express.static('public'));
 app.use((req, res, next) => {
@@ -664,7 +853,7 @@ app.use((req, res, next) => {
 app.get('/status', (req, res) => {
   const token = (req.query?.token || req.get('x-bot-token') || '').toString().trim();
   const effectiveToken = token.length ? token : (allowedTokens.length === 1 ? allowedTokens[0] : '');
-  const tenant = getTenant(effectiveToken);
+  const tenant = getTenantFromBotToken(effectiveToken);
   if (!tenant) return res.status(401).json({ error: 'unauthorized' });
   res.json({
     ready: tenant.ready,
@@ -724,8 +913,8 @@ app.get('*', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-  const token = socket.data?.token;
-  const tenant = getTenant(token);
+  const tenantKey = socket.data?.tenantKey;
+  const tenant = getTenant(tenantKey);
   if (!tenant) {
     socket.disconnect(true);
     return;

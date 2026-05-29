@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { io } from 'socket.io-client'
 import './HomePage.css'
 
-function HomePage() {
+function HomePage({ user, onLogout }) {
   const [botState, setBotState] = useState({
     status: 'Carregando...',
     sentCount: 0,
@@ -20,30 +20,17 @@ function HomePage() {
   const [bulkInput, setBulkInput] = useState('')
   const [chunkSize, setChunkSize] = useState('')
   const [contacts, setContacts] = useState([])
-  const [accessToken, setAccessToken] = useState(() => localStorage.getItem('bot_access_token') || '')
-  const [serverUrl, setServerUrl] = useState(() => localStorage.getItem('bot_server_url') || import.meta.env.VITE_SOCKET_URL || '')
   const [now, setNow] = useState(() => Date.now())
   const socketRef = useRef(null)
   const logsContainerRef = useRef(null)
 
   useEffect(() => {
-    const socketUrl = serverUrl ? serverUrl : undefined
-    const token = accessToken || window.prompt('Chave de acesso do servidor (aparece no terminal do npm start):') || ''
-    if (!token) {
-      addLog('❌ Chave de acesso não informada. Não foi possível conectar.')
-      return
-    }
-    if (token !== accessToken) {
-      localStorage.setItem('bot_access_token', token)
-      setAccessToken(token)
-    }
-    const socket = io(socketUrl, { path: '/socket.io', auth: { token } })
+    const socket = io(undefined, { path: '/socket.io', withCredentials: true })
     socketRef.current = socket
 
     socket.on('connect', () => addLog('Conectado ao servidor.'))
     socket.on('connect_error', err => {
-      const originLabel = socketUrl ? socketUrl : 'mesma origem'
-      addLog(`❌ Falha ao conectar no servidor (${originLabel}): ${err.message}`)
+      addLog(`❌ Falha ao conectar no servidor: ${err.message}`)
     })
     socket.on('disconnect', reason => addLog(`⚠️ Desconectado: ${reason}`))
 
@@ -67,7 +54,7 @@ function HomePage() {
     return () => {
       socket.disconnect()
     }
-  }, [accessToken, serverUrl])
+  }, [])
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
@@ -93,10 +80,10 @@ function HomePage() {
     const safeSize = Number.parseInt(String(size || ''), 10)
     if (!Number.isFinite(safeSize) || safeSize <= 0) return []
     if (rawDigits.length < safeSize) return []
-    if (rawDigits.length % safeSize !== 0) return []
     const out = []
-    for (let i = 0; i < rawDigits.length; i += safeSize) {
-      out.push(rawDigits.slice(i, i + safeSize))
+    for (let i = 0; i + safeSize <= rawDigits.length; i += safeSize) {
+      const slice = rawDigits.slice(i, i + safeSize)
+      if (slice.length === safeSize) out.push(slice)
     }
     return out
   }
@@ -105,32 +92,47 @@ function HomePage() {
     const raw = String(text || '').trim()
     if (!raw) return []
 
-    const rawDigits = raw.replace(/\D/g, '')
-    const hasSeparators = /[,\s;\n]/.test(raw)
-    if (!hasSeparators && rawDigits.length > 13) {
-      const explicitSplit = splitByFixedSize(rawDigits, size)
-      if (explicitSplit.length) return explicitSplit.map(normalizeContact).filter(Boolean)
+    const lines = raw.split(/\r?\n/).map(item => item.trim()).filter(Boolean)
 
-      const split13 = splitByFixedSize(rawDigits, 13)
-      if (split13.length) return split13.map(normalizeContact).filter(Boolean)
+    const extracted = []
+    for (const line of lines.length ? lines : [raw]) {
+      const digits = normalizeContact(line)
+      if (!digits) continue
 
-      const split11 = splitByFixedSize(rawDigits, 11)
-      if (split11.length) return split11.map(normalizeContact).filter(Boolean)
+      if (digits.length <= 13) {
+        extracted.push(digits)
+        continue
+      }
+
+      const regexDigits = digits.match(/55\d{11}|\d{11}|\d{10}/g) || []
+      if (regexDigits.length > 1) {
+        extracted.push(...regexDigits.map(normalizeContact).filter(Boolean))
+        continue
+      }
+
+      const explicitSplit = splitByFixedSize(digits, size)
+      if (explicitSplit.length) {
+        extracted.push(...explicitSplit.map(normalizeContact).filter(Boolean))
+        continue
+      }
+
+      const split13 = splitByFixedSize(digits, 13)
+      if (split13.length) {
+        extracted.push(...split13.map(normalizeContact).filter(Boolean))
+        continue
+      }
+
+      const split11 = splitByFixedSize(digits, 11)
+      if (split11.length) {
+        extracted.push(...split11.map(normalizeContact).filter(Boolean))
+        continue
+      }
+
+      const split10 = splitByFixedSize(digits, 10)
+      if (split10.length) extracted.push(...split10.map(normalizeContact).filter(Boolean))
     }
 
-    const matches = []
-    const re = /(\+?\d[\d().\s-]{8,}\d)/g
-    let m
-    while ((m = re.exec(raw)) !== null) {
-      const normalized = normalizeContact(m[1])
-      if (normalized) matches.push(normalized)
-    }
-    if (matches.length) return matches
-
-    return raw
-      .split(/[\n,;\t ]+/)
-      .map(normalizeContact)
-      .filter(Boolean)
+    return extracted.filter(Boolean)
   }
 
   function addContactsFromText(text, size) {
@@ -220,32 +222,14 @@ function HomePage() {
           <div className="topbar-subtitle">Contatos para envio · adicione os números de WhatsApp e envie sua mensagem.</div>
         </div>
         <div className="topbar-actions">
+          {user?.email ? <span className="badge badge-warn">{user.email}</span> : null}
+          {onLogout ? (
+            <button className="btn btn-ghost" onClick={onLogout}>
+              Sair
+            </button>
+          ) : null}
           <button className="btn btn-ghost" disabled>
             Importar da agenda
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={() => {
-              const current = localStorage.getItem('bot_server_url') || ''
-              const next = window.prompt('URL do servidor (ex: https://xxxx.trycloudflare.com). Deixe vazio para usar a mesma origem:', current) ?? current
-              const normalized = String(next || '').trim()
-              if (normalized) localStorage.setItem('bot_server_url', normalized)
-              else localStorage.removeItem('bot_server_url')
-              setServerUrl(normalized)
-            }}
-          >
-            Trocar servidor
-          </button>
-          <button
-            className="btn btn-ghost"
-            onClick={() => {
-              const token = window.prompt('Nova chave de acesso do servidor:') || ''
-              if (!token) return
-              localStorage.setItem('bot_access_token', token)
-              setAccessToken(token)
-            }}
-          >
-            Trocar chave
           </button>
           {!botState.ready ? (
             <button className="btn btn-primary" onClick={handleConnect}>
