@@ -1,0 +1,20 @@
+services:
+  auth-db:
+    image: postgres:16-alpine
+    container_name: bot-cris-auth-db
+    environment:
+      POSTGRES_DB: botcris
+      POSTGRES_USER: botcris
+      POSTGRES_PASSWORD: botcris
+    ports:
+      - "5433:5432"
+    volumes:
+      - bot-cris-auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botcris -d botcris"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  bot-cris-auth-db-data:
