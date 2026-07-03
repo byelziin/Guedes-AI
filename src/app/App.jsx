@@ -2,6 +2,20 @@ import { useEffect, useState } from 'react'
 import HomePage from '../pages/Home/HomePage.jsx'
 import AuthPage from '../pages/Auth/AuthPage.jsx'
 
+function isLocalhostHost(hostname) {
+  return ['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase())
+}
+
+function buildApiUrl(path) {
+  const apiUrl = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || '').trim()
+  if (!apiUrl) return path
+  const normalized = apiUrl.replace(/\/+$, '')
+  if (isLocalhostHost(new URL(normalized).hostname) && !isLocalhostHost(window.location.hostname)) {
+    return path
+  }
+  return `${normalized}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 function App() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState(null)
@@ -11,7 +25,7 @@ function App() {
     let cancelled = false
     async function load() {
       try {
-        const res = await fetch('/api/auth/me', { credentials: 'include' })
+        const res = await fetch(buildApiUrl('/api/auth/me'), { credentials: 'include' })
         const data = await res.json().catch(() => ({}))
         if (cancelled) return
         if (res.ok && data?.user) {
@@ -40,7 +54,7 @@ function App() {
 
   async function handleLogout() {
     try {
-      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+      await fetch(buildApiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include' })
     } catch (e) { }
     setUser(null)
   }

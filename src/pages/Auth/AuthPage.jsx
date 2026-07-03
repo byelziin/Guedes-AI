@@ -11,6 +11,20 @@ function mapAuthError(code) {
   return 'Não foi possível concluir. Tente novamente.'
 }
 
+function isLocalhostHost(hostname) {
+  return ['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase())
+}
+
+function buildApiUrl(path) {
+  const apiUrl = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || '').trim()
+  if (!apiUrl) return path
+  const normalized = apiUrl.replace(/\/+$, '')
+  if (isLocalhostHost(new URL(normalized).hostname) && !isLocalhostHost(window.location.hostname)) {
+    return path
+  }
+  return `${normalized}${path.startsWith('/') ? path : `/${path}`}`
+}
+
 async function postJson(url, body) {
   const res = await fetch(url, {
     method: 'POST',
@@ -36,7 +50,7 @@ function AuthPage({ onAuthenticated }) {
     setLoading(true)
 
     try {
-      const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login'
+      const endpoint = buildApiUrl(mode === 'register' ? '/api/auth/register' : '/api/auth/login')
       const result = await postJson(endpoint, { email, password })
       if (!result.ok) {
         const code = result.data?.error

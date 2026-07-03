@@ -25,7 +25,19 @@ function HomePage({ user, onLogout }) {
   const logsContainerRef = useRef(null)
 
   useEffect(() => {
-    const socket = io(undefined, { path: '/socket.io', withCredentials: true })
+    const rawSocketOrigin = String(import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || '').trim()
+    let socketOrigin = rawSocketOrigin
+
+    try {
+      const hostname = new URL(rawSocketOrigin || window.location.origin).hostname
+      if (['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase()) && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname.toLowerCase())) {
+        socketOrigin = window.location.origin
+      }
+    } catch (e) {
+      socketOrigin = rawSocketOrigin || window.location.origin
+    }
+
+    const socket = io(socketOrigin || undefined, { path: '/socket.io', withCredentials: true })
     socketRef.current = socket
 
     socket.on('connect', () => addLog('Conectado ao servidor.'))
