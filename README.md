@@ -20,6 +20,12 @@ Isso inicia:
 - **Vite dev server** em `http://localhost:5173` (com hot-reload)
 - O servidor fica acessível via proxy Socket.io/status
 
+Acesse a interface a partir de outra máquina na mesma rede usando o IP do host:
+
+- Exemplo: `http://192.168.2.176:3001` (ajuste o IP conforme sua máquina)
+
+Se o frontend rodar em `localhost` mas o backend em outra porta/IP, atualize `VITE_BACKEND_URL` no `.env` para o IP do host e rode `npm run build`.
+
 Em outro terminal, inicie o servidor backend:
 
 ```bash

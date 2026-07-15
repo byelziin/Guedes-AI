@@ -32,7 +32,10 @@ const CHATWOOT_TOKEN = String(process.env.CHATWOOT_API_TOKEN || process.env.CHAT
 const EVOLUTION_TIMEOUT_MS = parseEnvInt('EVOLUTION_TIMEOUT_MS', 60000);
 
 const app = express();
+const cors = require('cors');
 app.use(express.json({ limit: '1mb' }));
+// Allow CORS for dynamic origins and support credentials
+app.use(cors({ origin: true, credentials: true }));
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -154,24 +157,7 @@ function parseAllowedTokens() {
   if (rawList.trim().length) tokens.push(...rawList.split(/[,;\n]+/).map(t => t.trim()).filter(Boolean));
   if (rawSingle.trim().length) tokens.push(rawSingle.trim());
 
-  const unique = [...new Set(tokens)];
-  if (unique.length) return unique;
-
-  const count = Math.max(1, parseEnvInt('BOT_ACCESS_TOKEN_COUNT', 4));
-  const generated = Array.from({ length: count }, () => crypto.randomBytes(16).toString('hex'));
-  const persist = parseEnvBool('BOT_PERSIST_TOKENS', true);
-  if (persist) {
-    const joined = generated.join(',');
-    const saved = upsertEnvVar(envPath, 'BOT_ACCESS_TOKENS', joined);
-    if (saved) {
-      process.env.BOT_ACCESS_TOKENS = joined;
-      console.log('Chaves de acesso geradas e salvas no .env');
-    } else {
-      console.log('Chaves de acesso geradas, mas não foi possível salvar no .env');
-    }
-  }
-
-  return generated;
+  return [...new Set(tokens)];
 }
 
 function tokenToId(token) {
@@ -183,12 +169,14 @@ const allowedTokenSet = new Set(allowedTokens);
 if (allowedTokens.length === 1) {
   console.log(`Chave de acesso da interface: ${allowedTokens[0]}`);
   console.log(`ACCESS_TOKEN=${allowedTokens[0]}`);
-} else {
+} else if (allowedTokens.length > 1) {
   console.log(`Chaves de acesso carregadas: ${allowedTokens.length}`);
   allowedTokens.forEach((t, idx) => {
     console.log(`Chave ${idx + 1}: ${t}`);
     console.log(`ACCESS_TOKEN_${idx + 1}=${t}`);
   });
+} else {
+  console.log('Nenhuma chave de acesso configurada. Defina BOT_ACCESS_TOKEN ou BOT_ACCESS_TOKENS no .env.');
 }
 
 const databaseUrl = String(process.env.DATABASE_URL || '').trim();
@@ -846,7 +834,17 @@ app.post('/api/auth/logout', requireAuthEnabled, async (req, res) => {
 app.use(express.static('dist'));
 app.use(express.static('public'));
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = String(req.headers.origin || '').trim();
+  if (origin.length) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,x-bot-token');
+  }
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
   next();
 });
 
@@ -1112,6 +1110,6 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(port, () => {
-  console.log(`Servidor em http://localhost:${port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Servidor disponível em http://0.0.0.0:${port}`);
 });
