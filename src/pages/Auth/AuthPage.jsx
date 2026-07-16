@@ -12,17 +12,27 @@ function mapAuthError(code) {
 }
 
 function isLocalhostHost(hostname) {
-  return ['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase())
+  return ['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(hostname.toLowerCase())
 }
 
 function buildApiUrl(path) {
   const apiUrl = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || '').trim()
   if (!apiUrl) return path
-  const normalized = apiUrl.replace(/\/+$, '')
-  if (isLocalhostHost(new URL(normalized).hostname) && !isLocalhostHost(window.location.hostname)) {
+
+  const normalized = apiUrl.replace(/\/+$/, '')
+  try {
+    const target = new URL(normalized)
+    const currentHostname = window.location.hostname.toLowerCase()
+    const targetHostname = target.hostname.toLowerCase()
+
+    if (isLocalhostHost(targetHostname) || targetHostname === currentHostname) {
+      return path
+    }
+
+    return `${normalized}${path.startsWith('/') ? path : `/${path}`}`
+  } catch (e) {
     return path
   }
-  return `${normalized}${path.startsWith('/') ? path : `/${path}`}`
 }
 
 async function postJson(url, body) {

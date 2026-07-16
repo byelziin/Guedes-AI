@@ -44,7 +44,7 @@ const io = new Server(server, {
   },
 });
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 function parseEnvInt(name, fallback) {
   const raw = String(process.env[name] ?? '').trim();
   if (!raw.length) return fallback;

@@ -26,18 +26,30 @@ function HomePage({ user, onLogout }) {
 
   useEffect(() => {
     const rawSocketOrigin = String(import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || '').trim()
-    let socketOrigin = rawSocketOrigin
+    let socketOrigin = ''
 
     try {
-      const hostname = new URL(rawSocketOrigin || window.location.origin).hostname
-      if (['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase()) && !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname.toLowerCase())) {
+      const target = new URL(rawSocketOrigin || window.location.origin)
+      const targetHostname = target.hostname.toLowerCase()
+      const currentHostname = window.location.hostname.toLowerCase()
+      const isLocalTarget = ['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(targetHostname)
+
+      if (isLocalTarget || targetHostname === currentHostname) {
         socketOrigin = window.location.origin
+      } else {
+        socketOrigin = rawSocketOrigin || window.location.origin
       }
     } catch (e) {
-      socketOrigin = rawSocketOrigin || window.location.origin
+      socketOrigin = window.location.origin
     }
 
-    const socket = io(socketOrigin || undefined, { path: '/socket.io', withCredentials: true })
+    const botToken = String(import.meta.env.VITE_BOT_TOKEN || import.meta.env.VITE_ACCESS_TOKEN || '').trim()
+    const socket = io(socketOrigin || undefined, {
+      path: '/socket.io',
+      withCredentials: true,
+      transports: ['websocket', 'polling'],
+      auth: botToken ? { token: botToken } : undefined,
+    })
     socketRef.current = socket
 
     socket.on('connect', () => addLog('Conectado ao servidor.'))
