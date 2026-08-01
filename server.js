@@ -61,7 +61,7 @@ function parseEnvBool(name, fallback) {
   return fallback;
 }
 
-const AUTH_ALLOWED_DOMAIN = String(process.env.AUTH_ALLOWED_DOMAIN || 'bfrcapital.com.br')
+const AUTH_ALLOWED_DOMAIN = String(process.env.AUTH_ALLOWED_DOMAIN || 'gmail.com')
   .trim()
   .toLowerCase()
   .replace(/^@+/, '');
@@ -468,7 +468,7 @@ async function configureChatwoot(tenant) {
     daysLimitImportMessages: 3,
     signDelimiter: '\n',
     autoCreate: true,
-    organization: 'Guedes AI',
+    organization: 'Guedes-AI',
   };
   await evolutionRequest('POST', `/chatwoot/set/${encodeURIComponent(tenant.instanceName)}`, body);
 }

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import './AuthPage.css'
 
 function mapAuthError(code) {
-  if (code === 'forbidden_domain') return 'Use seu e-mail @bfrcapital.com.br.'
+  if (code === 'forbidden_domain') return 'Use seu e-mail @gmail.com.'
   if (code === 'invalid_credentials') return 'E-mail ou senha inválidos.'
   if (code === 'email_in_use') return 'Esse e-mail já está em uso.'
   if (code === 'weak_password') return 'Senha fraca (mínimo 8 caracteres).'
@@ -82,7 +82,7 @@ function AuthPage({ onAuthenticated }) {
         <div className="auth-header">
           <div>
             <div className="auth-title">{mode === 'register' ? 'Criar conta' : 'Entrar'}</div>
-            <div className="auth-subtitle">Acesso restrito a @bfrcapital.com.br</div>
+            <div className="auth-subtitle">Acesso restrito a @gmail.com</div>
           </div>
           <button
             className="btn btn-ghost"
@@ -103,7 +103,7 @@ function AuthPage({ onAuthenticated }) {
               className="auth-input"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="nome@bfrcapital.com.br"
+              placeholder="nome@gmail.com"
               autoComplete="email"
               inputMode="email"
             />

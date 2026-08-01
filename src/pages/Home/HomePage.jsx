@@ -242,7 +242,7 @@ function HomePage({ user, onLogout }) {
     <div className="app">
       <header className="topbar">
         <div className="topbar-left">
-          <div className="topbar-title">Guedes AI</div>
+          <div className="topbar-title">Guedes-AI</div>
           <div className="topbar-subtitle">Contatos para envio · adicione os números de WhatsApp e envie sua mensagem.</div>
         </div>
         <div className="topbar-actions">
@@ -268,8 +268,8 @@ function HomePage({ user, onLogout }) {
         <div className="brandmark" aria-hidden="true">
           <img
             className="brandmark-img"
-            src={`${import.meta.env.BASE_URL}BFR%202.png`}
-            alt=""
+            src="/GuedesAi.png"
+            alt="Guedes-AI"
           />
         </div>
       </header>

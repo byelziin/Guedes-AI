@@ -11,7 +11,7 @@ services:
     volumes:
       - guedes-ai-auth-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U botcris -d botcris"]
+      test: ["CMD-SHELL", "pg_isready -U guedesai -d guedesai"]
       interval: 5s
       timeout: 5s
       retries: 10
