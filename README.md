@@ -1,96 +1,111 @@
-# Bot Cris - Interface Web com React + Vite
+# Bot Cris
 
-Interface web moderna para gerenciar campanhas de disparo via WhatsApp.
+Uma interface web moderna para conectar o WhatsApp, autenticar com QR Code e disparar mensagens para contatos cadastrados com controle em tempo real.
 
-## InstalaÃ§Ã£o
+## Visão geral
+
+O Bot Cris combina um frontend em React com um backend em Node.js/Express + Socket.io para oferecer uma experiência simples e rápida para gerenciar envios via WhatsApp.
+
+## ? Recursos principais
+
+- ?? Autenticação do WhatsApp via QR Code
+- ? Interface reativa construída com React + Vite
+- ?? Comunicação em tempo real com Socket.io
+- ?? Cadastro de contatos e mensagem personalizada
+- ?? Logs em tempo real do fluxo do bot
+- ?? Controle para iniciar e interromper envios
+- ?? Geração automática de mensagens para campanhas
+
+## ??? Requisitos
+
+- Node.js 18 ou superior
+- Google Chrome instalado no computador
+- Windows (o projeto já está configurado para usar o Chrome local)
+
+## ?? Instalação
+
+Clone o projeto e instale as dependências:
 
 ```bash
 npm install
 ```
 
-## Desenvolvimento
+## ?? Configuração
 
-Para rodar em desenvolvimento com hot-reload:
+Você pode definir uma chave de acesso para a interface antes de iniciar o servidor:
+
+```bash
+$env:BOT_ACCESS_TOKEN="minha-chave"
+```
+
+Se nenhuma chave for definida, o servidor gera uma automaticamente.
+
+## ?? Como executar
+
+### 1. Inicie o frontend em modo desenvolvimento
 
 ```bash
 npm run dev
 ```
 
-Isso inicia:
-- **Vite dev server** em `http://localhost:5173` (com hot-reload)
-- O servidor fica acessÃ­vel via proxy Socket.io/status
+A aplicação fica disponível em:
 
-Acesse a interface a partir de outra mÃ¡quina na mesma rede usando o IP do host:
+- http://localhost:5173
 
-- Exemplo: `http://192.168.2.176:3001` (ajuste o IP conforme sua mÃ¡quina)
-
-Se o frontend rodar em `localhost` mas o backend em outra porta/IP, atualize `VITE_BACKEND_URL` no `.env` para o IP do host e rode `npm run build`.
-
-Em outro terminal, inicie o servidor backend:
+### 2. Em outro terminal, inicie o backend
 
 ```bash
 npm start
 ```
 
-## Build para ProduÃ§Ã£o
+O backend roda em:
+
+- http://localhost:3000
+
+Se você quiser acessar a interface a partir de outra máquina na mesma rede, ajuste o IP do host e a URL usada pelo frontend conforme sua rede.
+
+> A interface pede a chave de acesso informada no terminal do backend para se conectar corretamente.
+
+## ?? Estrutura do projeto
+
+```text
++-- src/
+¦   +-- App.jsx          # Tela principal da interface
+¦   +-- main.jsx         # Entrada React
+¦   +-- App.css          # Estilos da aplicação
+¦   +-- index.css        # Estilos globais
++-- public/              # Arquivos públicos
++-- index.html           # HTML base do Vite
++-- server.js            # Backend Express + Socket.io + WhatsApp
++-- message.js           # Geração de mensagens
++-- numbers.js           # Lista de números padrão
++-- vite.config.js       # Configuração do Vite
++-- package.json         # Dependências e scripts
+```
+
+## ??? Build para produção
 
 ```bash
 npm run build
 ```
 
-Isso gera a build otimizada em `public/dist/`.
+A build será gerada na pasta `dist/` e o backend pode servir a aplicação pronta.
 
-Para testar a build localmente:
+## ?? Variáveis de ambiente
 
-```bash
-npm start
-```
+- `BOT_ACCESS_TOKEN` ou `BOT_ACCESS_TOKENS`: define as chaves de acesso permitidas
+- `PORT`: altera a porta do backend (padrão: 3000)
+- `VITE_SOCKET_URL`: URL usada pelo frontend para conectar ao servidor Socket.io
 
-Acesse em `http://localhost:3000`
+## ?? Fluxo de uso
 
-## Estrutura
+1. Abra a interface no navegador.
+2. Informe a chave de acesso exibida no terminal do backend.
+3. Clique em “Autenticar WhatsApp”.
+4. Escaneie o QR Code no celular.
+5. Adicione contatos e escreva a mensagem.
+6. Inicie o envio e acompanhe os logs.
 
-```
-â”œâ”€â”€ src/
-â”‚   â”œâ”€â”€ main.jsx       # Entry point do React
-â”‚   â”œâ”€â”€ app/
-â”‚   â”‚   â””â”€â”€ App.jsx
-â”‚   â”œâ”€â”€ pages/
-â”‚   â”‚   â””â”€â”€ Home/
-â”‚   â”‚       â””â”€â”€ HomePage.jsx
-â”‚   â””â”€â”€ styles/
-â”‚       â””â”€â”€ index.css
-â”œâ”€â”€ index.html         # Template HTML
-â”œâ”€â”€ vite.config.js     # ConfiguraÃ§Ã£o do Vite
-â”œâ”€â”€ server.js          # Backend Express/Socket.io
-â”œâ”€â”€ numbers.js         # Lista de nÃºmeros padrÃ£o
-â””â”€â”€ package.json
-```
+## ?? Contribuição
 
-## Features
-
-- âœ… AutenticaÃ§Ã£o WhatsApp via QR code
-- âœ… Interface reativa com React
-- âœ… ComunicaÃ§Ã£o em tempo real via Socket.io
-- âœ… Campo customizÃ¡vel para nÃºmeros
-- âœ… Campo customizÃ¡vel para mensagem
-- âœ… Logs em tempo real
-- âœ… Controle de campanha (iniciar/parar)
-
-## Chaves de acesso
-
-O servidor usa uma chave (token) para separar clientes/sessÃµes. VocÃª pode:
-
-- Definir manualmente:
-  - `BOT_ACCESS_TOKEN=...` (uma chave)
-  - `BOT_ACCESS_TOKENS=chave1,chave2,...` (vÃ¡rias chaves)
-- Ou deixar o servidor gerar automaticamente (e salvar no `.env`):
-  - `BOT_ACCESS_TOKEN_COUNT=4`
-  - `BOT_PERSIST_TOKENS=true`
-
-## Scripts
-
-- `npm run dev` - Inicia Vite dev server
-- `npm run build` - Build para produÃ§Ã£o
-- `npm run preview` - Visualiza a build localmente
-- `npm start` - Inicia o servidor backend
+Contribuições são bem-vindas. Abra uma issue ou envie um pull request com sugestões e melhorias.
