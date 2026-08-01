@@ -1,38 +1,38 @@
-# Bot Cris
+﻿# Guedes-AI
 
 Uma interface web moderna para conectar o WhatsApp, autenticar com QR Code e disparar mensagens para contatos cadastrados com controle em tempo real.
 
-## Vis�o geral
+## Visão geral
 
-O Bot Cris combina um frontend em React com um backend em Node.js/Express + Socket.io para oferecer uma experi�ncia simples e r�pida para gerenciar envios via WhatsApp.
+O Guedes-AI combina um frontend em React com um backend em Node.js/Express + Socket.io para oferecer uma experiência simples e rápida para gerenciar envios via WhatsApp.
 
-## ? Recursos principais
+## ✨ Recursos principais
 
-- ?? Autentica��o do WhatsApp via QR Code
-- ? Interface reativa constru�da com React + Vite
-- ?? Comunica��o em tempo real com Socket.io
-- ?? Cadastro de contatos e mensagem personalizada
-- ?? Logs em tempo real do fluxo do bot
-- ?? Controle para iniciar e interromper envios
-- ?? Gera��o autom�tica de mensagens para campanhas
+- 🔐 Autenticação do WhatsApp via QR Code
+- ⚡ Interface reativa construída com React + Vite
+- 📡 Comunicação em tempo real com Socket.io
+- 📋 Cadastro de contatos e mensagem personalizada
+- 📝 Logs em tempo real do fluxo do bot
+- ⏹️ Controle para iniciar e interromper envios
+- 🧠 Geração automática de mensagens para campanhas
 
-## ??? Requisitos
+## 🛠️ Requisitos
 
 - Node.js 18 ou superior
 - Google Chrome instalado no computador
-- Windows (o projeto j� est� configurado para usar o Chrome local)
+- Windows (o projeto já está configurado para usar o Chrome local)
 
-## ?? Instala��o
+## 🚀 Instalação
 
-Clone o projeto e instale as depend�ncias:
+Clone o projeto e instale as dependências:
 
 ```bash
 npm install
 ```
 
-## ?? Configura��o
+## ⚙️ Configuração
 
-Voc� pode definir uma chave de acesso para a interface antes de iniciar o servidor:
+Você pode definir uma chave de acesso para a interface antes de iniciar o servidor:
 
 ```bash
 $env:BOT_ACCESS_TOKEN="minha-chave"
@@ -40,7 +40,7 @@ $env:BOT_ACCESS_TOKEN="minha-chave"
 
 Se nenhuma chave for definida, o servidor gera uma automaticamente.
 
-## ?? Como executar
+## ▶️ Como executar
 
 ### 1. Inicie o frontend em modo desenvolvimento
 
@@ -48,7 +48,7 @@ Se nenhuma chave for definida, o servidor gera uma automaticamente.
 npm run dev
 ```
 
-A aplica��o fica dispon�vel em:
+A aplicação fica disponível em:
 
 - http://localhost:5173
 
@@ -62,50 +62,48 @@ O backend roda em:
 
 - http://localhost:3000
 
-Se voc� quiser acessar a interface a partir de outra m�quina na mesma rede, ajuste o IP do host e a URL usada pelo frontend conforme sua rede.
-
 > A interface pede a chave de acesso informada no terminal do backend para se conectar corretamente.
 
-## ?? Estrutura do projeto
+## 🧱 Estrutura do projeto
 
 ```text
-+-- src/
-�   +-- App.jsx          # Tela principal da interface
-�   +-- main.jsx         # Entrada React
-�   +-- App.css          # Estilos da aplica��o
-�   +-- index.css        # Estilos globais
-+-- public/              # Arquivos p�blicos
-+-- index.html           # HTML base do Vite
-+-- server.js            # Backend Express + Socket.io + WhatsApp
-+-- message.js           # Gera��o de mensagens
-+-- numbers.js           # Lista de n�meros padr�o
-+-- vite.config.js       # Configura��o do Vite
-+-- package.json         # Depend�ncias e scripts
+├── src/
+│   ├── App.jsx          # Tela principal da interface
+│   ├── main.jsx         # Entrada React
+│   ├── App.css          # Estilos da aplicação
+│   └── index.css        # Estilos globais
+├── public/              # Arquivos públicos
+├── index.html           # HTML base do Vite
+├── server.js            # Backend Express + Socket.io + WhatsApp
+├── message.js           # Geração de mensagens
+├── numbers.js           # Lista de números padrão
+├── vite.config.js       # Configuração do Vite
+└── package.json         # Dependências e scripts
 ```
 
-## ??? Build para produ��o
+## 🏗️ Build para produção
 
 ```bash
 npm run build
 ```
 
-A build ser� gerada na pasta `dist/` e o backend pode servir a aplica��o pronta.
+A build será gerada na pasta `dist/` e o backend pode servir a aplicação pronta.
 
-## ?? Vari�veis de ambiente
+## 🔧 Variáveis de ambiente
 
 - `BOT_ACCESS_TOKEN` ou `BOT_ACCESS_TOKENS`: define as chaves de acesso permitidas
-- `PORT`: altera a porta do backend (padr�o: 3000)
+- `PORT`: altera a porta do backend (padrão: 3000)
 - `VITE_SOCKET_URL`: URL usada pelo frontend para conectar ao servidor Socket.io
 
-## ?? Fluxo de uso
+## 🧪 Fluxo de uso
 
 1. Abra a interface no navegador.
 2. Informe a chave de acesso exibida no terminal do backend.
-3. Clique em �Autenticar WhatsApp�.
+3. Clique em “Autenticar WhatsApp”.
 4. Escaneie o QR Code no celular.
 5. Adicione contatos e escreva a mensagem.
 6. Inicie o envio e acompanhe os logs.
 
-## ?? Contribui��o
+## 🤝 Contribuição
 
-Contribui��es s�o bem-vindas. Abra uma issue ou envie um pull request com sugest�es e melhorias.
+Contribuições são bem-vindas. Abra uma issue ou envie um pull request com sugestões e melhorias.
