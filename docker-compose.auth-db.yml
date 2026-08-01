@@ -1,15 +1,15 @@
 services:
   auth-db:
     image: postgres:16-alpine
-    container_name: bot-cris-auth-db
+    container_name: guedes-ai-auth-db
     environment:
-      POSTGRES_DB: botcris
-      POSTGRES_USER: botcris
-      POSTGRES_PASSWORD: botcris
+      POSTGRES_DB: guedesai
+      POSTGRES_USER: guedesai
+      POSTGRES_PASSWORD: guedesai
     ports:
       - "5433:5432"
     volumes:
-      - bot-cris-auth-db-data:/var/lib/postgresql/data
+      - guedes-ai-auth-db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U botcris -d botcris"]
       interval: 5s
@@ -17,4 +17,4 @@ services:
       retries: 10
 
 volumes:
-  bot-cris-auth-db-data:
+  guedes-ai-auth-db-data:
