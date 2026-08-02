@@ -1,0 +1,38 @@
+services:
+  app:
+    build: .
+    container_name: bot-cris-app
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=${PORT}
+      - BOT_ACCESS_TOKEN=${BOT_ACCESS_TOKEN}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - VITE_BACKEND_URL=${VITE_BACKEND_URL}
+      - VITE_SOCKET_URL=${VITE_SOCKET_URL}
+      - AUTH_ALLOWED_DOMAIN=${AUTH_ALLOWED_DOMAIN}
+      - DATABASE_URL=${DATABASE_URL}
+      - SESSION_SECRET=${SESSION_SECRET}
+    depends_on:
+      - auth-db
+
+  auth-db:
+    image: postgres:16-alpine
+    container_name: guedes-ai-auth-db
+    environment:
+      - POSTGRES_DB=guedesai
+      - POSTGRES_USER=guedesai
+      - POSTGRES_PASSWORD=guedesai
+    ports:
+      - "5433:5432"
+    volumes:
+      - guedes-ai-auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guedesai -d guedesai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  guedes-ai-auth-db-data:

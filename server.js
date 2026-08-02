@@ -179,6 +179,12 @@ if (allowedTokens.length === 1) {
   console.log('Nenhuma chave de acesso configurada. Defina BOT_ACCESS_TOKEN ou BOT_ACCESS_TOKENS no .env.');
 }
 
+if (!EVOLUTION_API_KEY) {
+  console.error('❌ EVOLUTION_API_KEY não configurada. Defina a chave no .env ou como variável de ambiente antes de iniciar.');
+  console.error('Exemplo: EVOLUTION_API_KEY=your-evolution-api-key');
+  console.error('Sem essa chave, a autenticação do WhatsApp não funcionará.');
+}
+
 const databaseUrl = String(process.env.DATABASE_URL || '').trim();
 const sessionSecret = String(process.env.SESSION_SECRET || '').trim();
 const authEnabled = Boolean(databaseUrl && sessionSecret);
@@ -349,6 +355,13 @@ async function evolutionRequestWithKey(method, pathname, body, apiKeyOverride) {
     const res = await fetch(url, options);
     const text = await res.text();
     const payload = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
+    const contentType = String(res.headers.get('content-type') || '').toLowerCase();
+    const isHtmlResponse = typeof text === 'string' && /<html|<!doctype html/i.test(text);
+    if (isHtmlResponse) {
+      const err = new Error(`Resposta HTML inesperada da Evolution API em ${url}. Verifique EVOLUTION_API_URL e se o serviço Evolution está ativo.`);
+      err.status = res.status;
+      throw err;
+    }
     if (!res.ok) {
       const message = (() => {
         if (typeof payload === 'string') return payload;
