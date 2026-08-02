@@ -1,30 +1,7 @@
 import { useEffect, useState } from 'react'
 import HomePage from '../pages/Home/HomePage.jsx'
 import AuthPage from '../pages/Auth/AuthPage.jsx'
-
-function isLocalhostHost(hostname) {
-  return ['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(hostname.toLowerCase())
-}
-
-function buildApiUrl(path) {
-  const apiUrl = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || '').trim()
-  if (!apiUrl) return path
-
-  const normalized = apiUrl.replace(/\/+$/, '')
-  try {
-    const target = new URL(normalized)
-    const currentHostname = window.location.hostname.toLowerCase()
-    const targetHostname = target.hostname.toLowerCase()
-
-    if (isLocalhostHost(targetHostname) || targetHostname === currentHostname) {
-      return path
-    }
-
-    return `${normalized}${path.startsWith('/') ? path : `/${path}`}`
-  } catch (e) {
-    return path
-  }
-}
+import { buildApiUrl } from '../utils/api.js'
 
 function App() {
   const [loading, setLoading] = useState(true)

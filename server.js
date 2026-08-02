@@ -22,8 +22,6 @@ dotenv.config({ path: envPath });
 const { Server } = require('socket.io');
 const qrcode = require('qrcode');
 
-const numbers = require('./numbers');
-
 const EVOLUTION_API_URL = String(process.env.EVOLUTION_API_URL || 'http://127.0.0.1:8080').replace(/\/+$/, '');
 const EVOLUTION_API_KEY = String(process.env.EVOLUTION_API_KEY || process.env.API_KEY || '').trim();
 const CHATWOOT_URL = String(process.env.CHATWOOT_URL || 'https://app.chatwoot.com').replace(/\/+$/, '');
@@ -44,7 +42,7 @@ const io = new Server(server, {
   },
 });
 
-const port = process.env.PORT || 3001;
+const port = Number.parseInt(String(process.env.PORT || '3000').trim(), 10) || 3000;
 function parseEnvInt(name, fallback) {
   const raw = String(process.env[name] ?? '').trim();
   if (!raw.length) return fallback;
@@ -343,7 +341,11 @@ async function evolutionRequestWithKey(method, pathname, body, apiKeyOverride) {
   const apiKey = String(apiKeyOverride || '').trim();
   if (!apiKey) throw new Error('Evolution API key não configurada (EVOLUTION_API_KEY).');
   const url = `${EVOLUTION_API_URL}${pathname}`;
-  const headers = { apikey: apiKey };
+  const headers = {
+    apikey: apiKey,
+    'x-api-key': apiKey,
+    authorization: `Bearer ${apiKey}`,
+  };
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), EVOLUTION_TIMEOUT_MS);
   const options = { method, headers, signal: controller.signal };
@@ -488,7 +490,23 @@ async function configureChatwoot(tenant) {
 
 async function fetchEvolutionConnect(tenant) {
   const key = tenant.instanceApiKey || EVOLUTION_API_KEY;
-  return await evolutionRequestWithKey('GET', `/instance/connect/${encodeURIComponent(tenant.instanceName)}`, undefined, key);
+  const candidates = [
+    `/instance/connect/${encodeURIComponent(tenant.instanceName)}`,
+    `/instance/connect/${tenant.instanceName}`,
+    `/instance/${encodeURIComponent(tenant.instanceName)}/connect`,
+    `/instance/${tenant.instanceName}/connect`,
+  ];
+
+  for (const pathname of candidates) {
+    try {
+      return await evolutionRequestWithKey('GET', pathname, undefined, key);
+    } catch (err) {
+      const status = Number(err?.status || 0);
+      if (status !== 404) throw err;
+    }
+  }
+
+  throw new Error('Nenhum endpoint de conexão compatível retornou sucesso.');
 }
 
 async function fetchEvolutionQr(tenant) {
@@ -511,9 +529,25 @@ async function fetchEvolutionQr(tenant) {
 
 async function getEvolutionConnectionState(tenant) {
   const key = tenant.instanceApiKey || EVOLUTION_API_KEY;
-  const payload = await evolutionRequestWithKey('GET', `/instance/connectionState/${encodeURIComponent(tenant.instanceName)}`, undefined, key);
-  const state = payload?.instance?.state || payload?.state || '';
-  return String(state);
+  const candidates = [
+    `/instance/connectionState/${encodeURIComponent(tenant.instanceName)}`,
+    `/instance/connectionState/${tenant.instanceName}`,
+    `/instance/${encodeURIComponent(tenant.instanceName)}/connectionState`,
+    `/instance/${tenant.instanceName}/connectionState`,
+  ];
+
+  for (const pathname of candidates) {
+    try {
+      const payload = await evolutionRequestWithKey('GET', pathname, undefined, key);
+      const state = payload?.instance?.state || payload?.state || '';
+      return String(state);
+    } catch (err) {
+      const status = Number(err?.status || 0);
+      if (status !== 404) throw err;
+    }
+  }
+
+  return '';
 }
 
 function stopTenantPoller(tenant) {
@@ -574,6 +608,10 @@ async function initializeClient(tenant) {
     tenant.statusMessage = 'Evolution API não configurada.';
     sendUpdate(tenant);
     return;
+  }
+
+  if (!CHATWOOT_URL || !CHATWOOT_ACCOUNT_ID || !CHATWOOT_TOKEN) {
+    logToUi(tenant, '⚠️ Chatwoot não configurado. O app pode não conectar ao WhatsApp até as credenciais do Chatwoot serem definidas.');
   }
 
   tenant.initializing = true;
@@ -678,7 +716,10 @@ async function initializeClient(tenant) {
       } catch (e) { }
     }, 5000);
   } catch (err) {
-    logToUi(tenant, `❌ Erro ao inicializar Evolution: ${err.message}`);
+    const message = String(err?.message || 'Erro desconhecido');
+    tenant.statusMessage = 'Evolution não respondeu corretamente. Verifique a API e a chave.';
+    sendUpdate(tenant);
+    logToUi(tenant, `❌ Erro ao inicializar Evolution: ${message}`);
   } finally {
     tenant.initializing = false;
   }
@@ -1003,7 +1044,7 @@ io.on('connection', (socket) => {
     }
 
     const rawNumbers = data?.numbers || '';
-    const parsedNumbers = rawNumbers.trim().length ? parseNumbers(rawNumbers) : numbers;
+    const parsedNumbers = rawNumbers.trim().length ? parseNumbers(rawNumbers) : [];
     const customMessages = buildCustomMessages(data);
     if (!customMessages) {
       logToUi(tenant, '⚠️ Mensagem obrigatória. Preencha a mensagem no site para liberar o envio.');

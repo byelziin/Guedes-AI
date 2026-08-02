@@ -3,8 +3,8 @@ import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const frontendPort = Number.parseInt(String(env.VITE_FRONTEND_PORT || '3000').trim(), 10);
-  const backendTarget = String(env.VITE_BACKEND_URL || 'http://localhost:3001').trim();
+  const frontendPort = Number.parseInt(String(env.VITE_FRONTEND_PORT || '5173').trim(), 10);
+  const backendTarget = String(env.VITE_BACKEND_URL || 'http://localhost:3000').trim();
   const basePath = String(env.VITE_BASE || '/').trim();
 
   return {
